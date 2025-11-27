@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Gallery } from '@/components/Gallery';
 import { TopArtists } from '@/components/TopArtists';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,11 +12,24 @@ import { FilterOptions } from '@/components/FilterBar';
 import Link from 'next/link';
 
 export default function Home() {
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<'gallery' | 'top-artists'>('gallery');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [galleryFilters, setGalleryFilters] = useState<FilterOptions | undefined>(undefined);
   const { user, loading, signOut } = useAuth();
+
+  // Check if we should open profile modal after beginners questionnaire
+  const [showWelcomeMessage, setShowWelcomeMessage] = useState(false);
+  
+  useEffect(() => {
+    if (user && searchParams.get('openProfile') === 'generate') {
+      setShowProfileModal(true);
+      setShowWelcomeMessage(true);
+      // Clean up URL
+      window.history.replaceState({}, '', '/');
+    }
+  }, [user, searchParams]);
 
   const handleApplyFilterSet = (filterSet: FilterSet) => {
     // When user explicitly clicks "Apply" on a filter set:
@@ -165,8 +179,12 @@ export default function Home() {
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
       {showProfileModal && user && (
         <ProfileModal
-          onClose={() => setShowProfileModal(false)}
+          onClose={() => {
+            setShowProfileModal(false);
+            setShowWelcomeMessage(false);
+          }}
           onApplyFilters={handleApplyFilterSet}
+          showWelcomeMessage={showWelcomeMessage}
         />
       )}
     </div>

@@ -170,11 +170,12 @@ export function BeginnersQuestionnaire() {
       }
       
       localStorage.setItem('tattooPreferences', JSON.stringify(preferences));
-      router.push('/?beginners=true');
+      // Redirect to home and open profile modal to generate tattoos
+      router.push('/?openProfile=generate');
     } catch (err) {
       console.error('Error saving preferences:', err);
       localStorage.setItem('tattooPreferences', JSON.stringify(preferences));
-      router.push('/?beginners=true');
+      router.push('/?openProfile=generate');
     } finally {
       setSaving(false);
     }
@@ -390,10 +391,13 @@ export function BeginnersQuestionnaire() {
             <>
               <div className="mb-10 sm:mb-14 text-center">
                 <h2 className="mb-4 text-2xl sm:text-3xl md:text-4xl font-light tracking-[-0.02em] text-black">
-                  Almost there!
+                  Great! You're all set
                 </h2>
-                <p className="text-sm text-black/50 tracking-wide">
+                <p className="text-sm text-black/50 tracking-wide mb-2">
                   Give your preferences a name so you can find them later
+                </p>
+                <p className="text-xs text-black/40 tracking-wide">
+                  Next: Use AI to generate tattoo designs based on your preferences
                 </p>
               </div>
               <CompletionView
@@ -441,7 +445,7 @@ export function BeginnersQuestionnaire() {
                     Saving...
                   </>
                 ) : (
-                  'View Matching Tattoos'
+                  'Generate Tattoo with AI'
                 )}
               </button>
             </div>
@@ -1291,7 +1295,7 @@ function CompletionView({ preferences, filterName, onFilterNameChange }: Complet
         />
       </div>
 
-      <div className="text-sm text-black/50 space-y-2 mb-8 text-center">
+      <div className="text-sm text-black/50 space-y-2 mb-6 text-center">
         {preferences.styles.length > 0 && (
           <p>Styles: {preferences.styles.join(', ')}</p>
         )}
@@ -1305,9 +1309,23 @@ function CompletionView({ preferences, filterName, onFilterNameChange }: Complet
           <p>Size: {preferences.sizePreference === 'all' ? 'All Sizes' : preferences.sizePreference.charAt(0).toUpperCase() + preferences.sizePreference.slice(1)}</p>
         )}
       </div>
-      <p className="text-xs text-black/40 tracking-wide text-center">
-        We'll show you tattoos that match your preferences in the gallery
-      </p>
+      
+      <div className="mt-6 p-4 bg-black/5 border border-black/10 rounded-lg text-center">
+        <p className="text-xs text-black/70 mb-1">
+          <strong>✨ Next Step:</strong>
+        </p>
+        <p className="text-xs text-black/60">
+          After saving, you'll go to your profile where you can use AI to generate custom tattoo designs based on these preferences!
+        </p>
+      </div>
+      <div className="mt-6 p-4 bg-black/5 border border-black/10 rounded-lg">
+        <p className="text-xs text-black/70 mb-1 text-center">
+          <strong>✨ Next Step:</strong>
+        </p>
+        <p className="text-xs text-black/60 text-center">
+          After saving, you'll go to your profile where you can use AI to generate custom tattoo designs based on these preferences!
+        </p>
+      </div>
     </div>
   );
 }

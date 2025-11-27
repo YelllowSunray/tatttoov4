@@ -11,9 +11,10 @@ import Image from 'next/image';
 interface ProfileModalProps {
   onClose: () => void;
   onApplyFilters?: (filterSet: FilterSet) => void;
+  showWelcomeMessage?: boolean;
 }
 
-export function ProfileModal({ onClose, onApplyFilters }: ProfileModalProps) {
+export function ProfileModal({ onClose, onApplyFilters, showWelcomeMessage = false }: ProfileModalProps) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [filterSets, setFilterSets] = useState<FilterSet[]>([]);
@@ -21,6 +22,7 @@ export function ProfileModal({ onClose, onApplyFilters }: ProfileModalProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [generatingForFilterSet, setGeneratingForFilterSet] = useState<FilterSet | null>(null);
   const [activeTab, setActiveTab] = useState<'filters' | 'tattoos'>('filters');
+  const [selectedTattoo, setSelectedTattoo] = useState<GeneratedTattoo | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -46,6 +48,26 @@ export function ProfileModal({ onClose, onApplyFilters }: ProfileModalProps) {
     };
     loadData();
   }, [user]);
+
+  // Prevent body scroll when large image modal is open
+  useEffect(() => {
+    if (selectedTattoo) {
+      // Store current scroll position
+      const scrollY = window.scrollY;
+      // Prevent body scroll
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
+      
+      return () => {
+        // Restore scroll position when modal closes
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        window.scrollTo(0, scrollY);
+      };
+    }
+  }, [selectedTattoo]);
 
   const handleDelete = async (filterSetId: string) => {
     if (!user?.uid) return;
@@ -121,6 +143,18 @@ export function ProfileModal({ onClose, onApplyFilters }: ProfileModalProps) {
         <h2 className="mb-6 sm:mb-8 text-2xl sm:text-3xl md:text-4xl font-light tracking-[-0.02em] text-black">
           Profile
         </h2>
+
+        {/* Welcome Message */}
+        {showWelcomeMessage && filterSets.length > 0 && (
+          <div className="mb-6 p-4 bg-black/5 border border-black/10 rounded-lg">
+            <p className="text-sm text-black/80 mb-2">
+              <strong>🎨 Ready to generate your tattoo design?</strong>
+            </p>
+            <p className="text-xs text-black/60">
+              Your preferences have been saved. Click "Generate Tattoo" on any filter set below to create a custom design using AI.
+            </p>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="mb-8 flex gap-2 border-b border-black/10">
@@ -250,7 +284,10 @@ export function ProfileModal({ onClose, onApplyFilters }: ProfileModalProps) {
                 {generatedTattoos.map((tattoo) => (
                   <div
                     key={tattoo.id}
-                    className="group relative aspect-square overflow-hidden bg-black border border-black/10 hover:border-black/30 transition-colors"
+                    onClick={() => {
+                      setSelectedTattoo(tattoo);
+                    }}
+                    className="group relative aspect-square overflow-hidden bg-black border border-black/10 hover:border-black/30 transition-colors cursor-pointer"
                   >
                     <Image
                       src={tattoo.imageUrl}
@@ -307,6 +344,59 @@ export function ProfileModal({ onClose, onApplyFilters }: ProfileModalProps) {
             }
           }}
         />
+      )}
+
+      {/* Large Image Modal */}
+      {selectedTattoo && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
+          onClick={() => setSelectedTattoo(null)}
+        >
+          <div
+            className="relative w-full h-full max-w-6xl max-h-[90vh] flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setSelectedTattoo(null)}
+              className="absolute top-4 right-4 z-10 bg-black/80 text-white rounded-full p-3 hover:bg-black transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+              aria-label="Close"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <div className="relative w-full h-full flex flex-col items-center justify-center pb-20">
+              <div className="relative w-full h-full flex items-center justify-center">
+                <img
+                  src={selectedTattoo.imageUrl}
+                  alt={selectedTattoo.subjectMatter || 'Generated tattoo'}
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
+              {(selectedTattoo.subjectMatter || selectedTattoo.filterSetName) && (
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/60 to-transparent p-6 text-white">
+                  {selectedTattoo.subjectMatter && (
+                    <p className="text-sm font-medium mb-1">
+                      {selectedTattoo.subjectMatter}
+                    </p>
+                  )}
+                  {selectedTattoo.filterSetName && (
+                    <p className="text-xs text-white/70">
+                      {selectedTattoo.filterSetName}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
