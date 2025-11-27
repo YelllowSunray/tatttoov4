@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleAuth } from 'google-auth-library';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,12 +13,40 @@ export async function POST(request: NextRequest) {
       bodyParts,
       referenceImage,
       referenceImageMimeType,
+      preferredService,
+      generateAllStyles,
     } = body;
 
+    // Define all available tattoo styles
+    const ALL_STYLES = [
+      'Black & Grey Realism',
+      'Color Realism',
+      'Portraits',
+      'American Traditional',
+      'Japanese (Irezumi)',
+      'Tribal / Polynesian',
+      'Fine Line',
+      'Minimalist',
+      'Single Needle',
+      'Watercolor',
+      'Abstract / Sketch',
+      'Geometric / Dotwork',
+      'Neo-Traditional',
+      'New School',
+      'Cartoon / Anime',
+    ];
+
     // Validate required fields
-    if (!subjectMatter || !styles || styles.length === 0) {
+    // Subject matter is optional if reference image is provided
+    if (!referenceImage && (!subjectMatter || !subjectMatter.trim())) {
       return NextResponse.json(
-        { error: 'Missing required fields: subjectMatter and styles are required' },
+        { error: 'Missing required fields: subjectMatter is required when no reference image is provided' },
+        { status: 400 }
+      );
+    }
+    if (!styles || styles.length === 0) {
+      return NextResponse.json(
+        { error: 'Missing required fields: styles are required' },
         { status: 400 }
       );
     }
@@ -39,47 +68,63 @@ export async function POST(request: NextRequest) {
     // Build optimized prompt for image generation
     const promptParts: string[] = [];
     
-    // If reference image is provided, use a VERY minimal prompt to let the image dominate
+    // If reference image is provided, create a prompt that transforms it into a tattoo design
     if (referenceImage) {
-      // When using baseImage, the uploaded image IS the base subject
-      // Keep prompt EXTREMELY short - just the essential style transformation
-      // The longer the prompt, the more it overrides the base image
-      // IMPORTANT: Subject matter should be incorporated INTO the image, not replace it
+      // Build a comprehensive prompt that creates a TATTOO DESIGN
+      // Emphasize style, body placement, size, and tattoo-specific characteristics
       
-      // For Vertex AI, we need to explicitly reference that we're transforming the base image
-      // Start with "tattoo of the image" to ensure the base image is used
-      promptParts.push('tattoo of the image');
-      
-      // Minimal style description only
+      // Start with style - most important for tattoo design
       const styleDescription = styleText.toLowerCase().includes('fine line') || styleText.toLowerCase().includes('fineline')
-        ? 'fine line style'
+        ? 'fine line tattoo style, delicate thin lines, minimal shading'
         : styleText.toLowerCase().includes('traditional')
-        ? 'traditional style'
+        ? 'traditional tattoo style, bold black outlines, solid colors'
         : styleText.toLowerCase().includes('realism')
-        ? 'realistic style'
+        ? 'realistic tattoo style, detailed shading'
         : styleText.toLowerCase().includes('geometric')
-        ? 'geometric style'
-        : `${styleText} style`;
+        ? 'geometric tattoo style, clean lines, geometric patterns'
+        : `${styleText} tattoo style`;
       promptParts.push(styleDescription);
       
-      // Add subject matter if provided - phrase it to incorporate into the image
+      // Add subject matter if provided
       if (subjectMatter.trim()) {
         const shortSubject = subjectMatter.trim().split(',')[0].split('.')[0].trim();
         if (shortSubject) {
-          // Use "with X" or "incorporating X" to add to the image, not replace it
-          promptParts.push(`incorporating ${shortSubject}`);
+          promptParts.push(shortSubject);
         }
       }
       
-      // Color preference - minimal
+      // Emphasize it's a TATTOO DESIGN
+      promptParts.push('tattoo design', 'tattoo stencil', 'line art', 'professional tattoo design');
+      
+      // Add color preference
       if (colorPreference === 'color') {
-        promptParts.push('color');
+        promptParts.push('colorful tattoo', 'vibrant colors');
       } else {
-        promptParts.push('black and white');
+        promptParts.push('black and white tattoo', 'monochrome');
       }
       
-      // Minimal quality - just preserve likeness
-      promptParts.push('preserve exact likeness');
+      // Add size context
+      if (sizePreference && sizePreference !== 'all') {
+        if (sizePreference === 'small') {
+          promptParts.push('small tattoo design', 'compact composition');
+        } else if (sizePreference === 'medium') {
+          promptParts.push('medium tattoo design', 'balanced composition');
+        } else if (sizePreference === 'large') {
+          promptParts.push('large tattoo design', 'expansive composition');
+        }
+      }
+      
+      // Add body part context
+      if (bodyParts && bodyParts.length > 0) {
+        const bodyPart = bodyParts[0].toLowerCase();
+        promptParts.push(`suitable for ${bodyPart} placement`);
+      }
+      
+      // Add quality descriptors
+      promptParts.push('clean line art', 'high quality', 'detailed', 'suitable for tattooing');
+      
+      // Reference that it's based on the uploaded image
+      promptParts.push('tattoo design inspired by reference image');
     } else {
       // No reference image - full detailed prompt
       if (subjectMatter.trim()) {
@@ -149,11 +194,13 @@ export async function POST(request: NextRequest) {
 
     // Define service names for tracking which model was used
     const serviceNames = referenceImage ? [
+      'Gemini (Google AI)', // Gemini for image-to-image via Imagen
       'Replicate Stable Diffusion XL', // Replicate has proven image-to-image support
       'Vertex AI Imagen (GCP)', // Vertex AI may not support image-to-image
       'Hugging Face Stable Diffusion',
       'Hugging Face Stable Diffusion (Fallback)',
     ] : [
+      'Gemini (Google AI)',
       'Replicate Stable Diffusion XL',
       'Vertex AI Imagen (GCP)',
       'Hugging Face Stable Diffusion',
@@ -161,11 +208,231 @@ export async function POST(request: NextRequest) {
     ];
 
     // Try multiple image generation services
-    // If reference image is provided, prioritize Replicate (proven image-to-image support)
-    // Vertex AI Imagen may not support image-to-image via baseImage parameter
-    // Otherwise, try Replicate first (easier setup, faster)
+    // If reference image is provided, prioritize Gemini (works well for selfies to tattoos)
+    // Then Replicate, then Vertex AI
     const imageServices = referenceImage ? [
-      // Service 1: Replicate API (prioritized for image-to-image - has proven support)
+      // Service 1: Gemini Nano Banana (Gemini 2.5 Flash Image) - excellent for portrait/selfie to tattoo
+      async () => {
+        const geminiApiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+        const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
+        const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
+        const credentialsJson = process.env.GOOGLE_CLOUD_CREDENTIALS;
+
+        // Need either Gemini API key OR Vertex AI credentials
+        if (!geminiApiKey && (!projectId || !credentialsJson)) {
+          throw new Error('SKIP'); // Skip silently if not configured
+        }
+
+        console.log('🎨 Attempting Gemini Nano Banana (Gemini 2.5 Flash Image) for portrait-to-tattoo...');
+        
+        try {
+          // Try Gemini API first (if API key is available)
+          if (geminiApiKey) {
+            console.log('Using Gemini API with Nano Banana model...');
+            const genAI = new GoogleGenerativeAI(geminiApiKey);
+            
+            // Build prompt for Nano Banana - emphasize preserving likeness
+            const nanoBananaPrompt = `Transform this portrait/selfie into a ${styleText} tattoo design while preserving the exact facial features and likeness.
+
+Style: ${styleText} tattoo style
+Color: ${colorPreference === 'color' ? 'colorful tattoo' : 'black and white tattoo, monochrome'}
+${sizePreference && sizePreference !== 'all' ? `Size: ${sizePreference} tattoo design` : ''}
+${bodyParts && bodyParts.length > 0 ? `Body placement: Suitable for ${bodyParts[0]} placement` : ''}
+
+Important requirements:
+- PRESERVE the exact facial features and likeness from the reference image
+- Keep the person's face structure, eyes, nose, mouth recognizable
+- Convert to ${styleText} tattoo art style while maintaining the person's appearance
+- The tattoo should clearly look like the person in the reference image
+- Professional tattoo design quality
+- Clean line art suitable for tattooing`;
+
+            // Convert base64 to image part for Gemini
+            const mimeType = referenceImageMimeType || 'image/png';
+            const imagePart = {
+              inlineData: {
+                data: referenceImage,
+                mimeType: mimeType,
+              },
+            };
+
+            // Use Gemini 2.5 Flash Image (Nano Banana) model
+            // Try different model names that might support image generation
+            const modelsToTry = [
+              'gemini-2.5-flash-image-exp', // Nano Banana
+              'gemini-2.0-flash-exp',
+              'gemini-1.5-pro',
+            ];
+
+            for (const modelName of modelsToTry) {
+              try {
+                console.log(`Trying Gemini model: ${modelName}`);
+                const model = genAI.getGenerativeModel({ model: modelName });
+                
+                // Generate content with image input
+                const result = await model.generateContent([
+                  nanoBananaPrompt,
+                  imagePart,
+                ]);
+
+                const response = await result.response;
+                
+                // Check if response contains image data
+                // Gemini might return image in different formats
+                const candidates = response.candidates;
+                if (candidates && candidates.length > 0) {
+                  const candidate = candidates[0];
+                  
+                  // Check for image in content
+                  if (candidate.content && candidate.content.parts) {
+                    for (const part of candidate.content.parts) {
+                      // If Gemini returns base64 image
+                      if (part.inlineData && part.inlineData.data) {
+                        console.log('✅ Gemini Nano Banana returned image data');
+                        return part.inlineData.data;
+                      }
+                    }
+                  }
+                }
+                
+                // If no image in response, try next model or fall through
+                console.log(`Model ${modelName} returned text, trying next...`);
+              } catch (modelError: any) {
+                console.log(`Model ${modelName} failed: ${modelError.message}, trying next...`);
+                continue;
+              }
+            }
+            
+            // If Gemini API didn't return image directly, fall through to Vertex AI
+            console.log('Gemini API returned text, using Vertex AI Imagen (Nano Banana backend)...');
+          }
+
+          // Fallback: Use Vertex AI Imagen (which uses Nano Banana/Gemini 2.5 Flash Image)
+          if (!projectId || !credentialsJson) {
+            throw new Error('Vertex AI credentials required for image generation');
+          }
+
+          // Parse credentials
+          let credentials;
+          try {
+            credentials = JSON.parse(credentialsJson);
+          } catch (parseError) {
+            throw new Error('Invalid credentials JSON format');
+          }
+
+          // Get access token
+          const auth = new GoogleAuth({
+            credentials: credentials,
+            scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+          });
+
+          const client = await auth.getClient();
+          const accessToken = await client.getAccessToken();
+
+          if (!accessToken.token) {
+            throw new Error('Failed to get access token');
+          }
+
+          // Build optimized prompt for portrait-to-tattoo conversion
+          // Emphasize preserving likeness while converting to tattoo style (like gemini.google.com)
+          const portraitTattooPrompt = `Transform this portrait into a ${styleText} tattoo design while preserving the exact facial features and likeness.
+
+Style: ${styleText} tattoo style
+${colorPreference === 'color' ? 'Color: Colorful tattoo' : 'Color: Black and white tattoo, monochrome'}
+${sizePreference && sizePreference !== 'all' ? `Size: ${sizePreference} tattoo design` : ''}
+${bodyParts && bodyParts.length > 0 ? `Body placement: Suitable for ${bodyParts[0]} placement` : ''}
+
+Requirements:
+- Preserve exact facial features and likeness from the reference image
+- Maintain the person's face structure, eyes, nose, mouth in tattoo style
+- Convert to ${styleText} tattoo art style while keeping the person recognizable
+- Professional tattoo design quality
+- Clean line art suitable for tattooing
+- The tattoo should look like the person in the reference image`;
+
+          // Use Vertex AI Imagen API (uses Nano Banana/Gemini 2.5 Flash Image backend)
+          // Try the latest Imagen model that uses Nano Banana
+          const apiEndpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagegeneration@006:predict`;
+
+          const instance: any = {
+            prompt: portraitTattooPrompt,
+            baseImage: {
+              bytesBase64Encoded: referenceImage,
+              mimeType: referenceImageMimeType || 'image/png',
+            },
+          };
+
+            const requestBody = {
+            instances: [instance],
+            parameters: {
+              sampleCount: 1,
+              aspectRatio: '1:1',
+              negativePrompt: 'blurry, low quality, distorted, watermark, different person, different face, unrecognizable',
+              // Higher guidance scale to preserve likeness better (like gemini.google.com)
+              guidanceScale: 4, // Medium guidance to balance style transformation with likeness preservation
+            },
+          };
+
+          console.log('📤 Sending request to Vertex AI Imagen (Nano Banana/Gemini 2.5 Flash Image):', {
+            hasBaseImage: !!instance.baseImage,
+            promptLength: portraitTattooPrompt.length,
+            guidanceScale: requestBody.parameters.guidanceScale,
+          });
+
+          const response = await fetch(apiEndpoint, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken.token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            let errorData;
+            try {
+              errorData = JSON.parse(errorText);
+            } catch {
+              errorData = { error: errorText.substring(0, 200) };
+            }
+            throw new Error(`Gemini Nano Banana/Imagen API error: ${errorData.error?.message || errorData.error || errorText.substring(0, 200)}`);
+          }
+
+          const data = await response.json();
+
+          if (!data.predictions || data.predictions.length === 0) {
+            throw new Error('Gemini Nano Banana/Imagen returned no predictions');
+          }
+
+          const prediction = data.predictions[0];
+          let base64Image: string | undefined;
+
+          if (prediction.bytesBase64Encoded) {
+            base64Image = prediction.bytesBase64Encoded;
+          } else if (prediction.generatedImages && Array.isArray(prediction.generatedImages) && prediction.generatedImages.length > 0) {
+            const imageData = prediction.generatedImages[0];
+            if (imageData.bytesBase64Encoded) {
+              base64Image = imageData.bytesBase64Encoded;
+            }
+          } else if (prediction.imageBytes) {
+            base64Image = prediction.imageBytes;
+          }
+
+          if (base64Image) {
+            const cleanedBase64 = String(base64Image).replace(/\s/g, '').trim();
+            console.log('✅ Successfully received image from Gemini Nano Banana (Imagen backend)');
+            return cleanedBase64;
+          }
+
+          throw new Error('Gemini Nano Banana/Imagen response format not recognized');
+        } catch (err: any) {
+          console.error('Gemini Nano Banana/Imagen error:', err);
+          throw err;
+        }
+      },
+      
+      // Service 2: Replicate API (prioritized for image-to-image - has proven support)
       async () => {
         const replicateApiKey = process.env.REPLICATE_API_TOKEN;
         if (!replicateApiKey) {
@@ -173,41 +440,76 @@ export async function POST(request: NextRequest) {
         }
 
         console.log('🎨 Attempting Replicate image generation...');
+        console.log('🔑 Replicate API token check:', {
+          hasToken: !!replicateApiKey,
+          tokenLength: replicateApiKey?.length || 0,
+          tokenPrefix: replicateApiKey?.substring(0, 10) || 'none',
+        });
         
-        // When using reference image, use an ultra-minimal prompt for Replicate
-        // Replicate's image-to-image works best when the prompt is VERY short
-        // The reference image should be the base, prompt just adds style transformation
+        // When using reference image, transform it into a tattoo design
+        // The goal is to create a tattoo design, not preserve the photo exactly
         let replicatePrompt = enhancedPrompt;
         if (referenceImage) {
-          // For Replicate with reference image, use ULTRA-minimal prompt
-          // The key is to explicitly reference the image and keep subject matter minimal
-          // High strength (0.95) + explicit image reference ensures the image is used
-          const styleOnly = styleText.toLowerCase().includes('fine line') || styleText.toLowerCase().includes('fineline')
-            ? 'fine line tattoo'
+          // Build a prompt that creates a TATTOO DESIGN from the reference image
+          // For portraits/selfies, emphasize line art conversion
+          
+          // Start with the style - this is the most important
+          const styleDescription = styleText.toLowerCase().includes('fine line') || styleText.toLowerCase().includes('fineline')
+            ? 'fine line tattoo style, delicate thin lines, minimal shading, line art'
             : styleText.toLowerCase().includes('traditional')
-            ? 'traditional tattoo'
+            ? 'traditional tattoo style, bold black outlines, solid colors, line art'
             : styleText.toLowerCase().includes('realism')
-            ? 'realistic tattoo'
+            ? 'realistic tattoo style, detailed shading, line art'
             : styleText.toLowerCase().includes('geometric')
-            ? 'geometric tattoo'
-            : `${styleText} tattoo`;
+            ? 'geometric tattoo style, clean lines, geometric patterns, line art'
+            : `${styleText} tattoo style, line art`;
           
-          // Build prompt that explicitly references the image
-          // "tattoo of this image" tells the model to use the uploaded image as the base
-          let promptParts = [`tattoo of this image, ${styleOnly}`];
+          let promptParts = [styleDescription];
           
-          // Add subject matter ONLY if provided, and phrase it to incorporate into the image
+          // For portraits, emphasize portrait tattoo conversion
+          promptParts.push('portrait tattoo', 'face tattoo design', 'portrait line art');
+          
+          // Add subject matter if provided
           if (subjectMatter.trim()) {
             const shortSubject = subjectMatter.trim().split(',')[0].split('.')[0].trim();
             if (shortSubject) {
-              // Phrase it as "incorporating X" to add to the image, not replace it
-              promptParts.push(`incorporating ${shortSubject}`);
+              promptParts.push(shortSubject);
             }
           }
           
+          // STRONGLY emphasize it's a TATTOO DESIGN/STENCIL, not a photo
+          promptParts.push('tattoo design', 'tattoo stencil', 'line art only', 'no photo', 'no realistic photo', 'stencil art');
+          
+          // Add color preference
+          if (colorPreference === 'color') {
+            promptParts.push('colorful tattoo');
+          } else {
+            promptParts.push('black and white tattoo', 'monochrome', 'black ink only');
+          }
+          
+          // Add size context
+          if (sizePreference && sizePreference !== 'all') {
+            if (sizePreference === 'small') {
+              promptParts.push('small tattoo design', 'compact composition');
+            } else if (sizePreference === 'medium') {
+              promptParts.push('medium tattoo design', 'balanced composition');
+            } else if (sizePreference === 'large') {
+              promptParts.push('large tattoo design', 'expansive composition');
+            }
+          }
+          
+          // Add body part context - this helps the AI understand placement
+          if (bodyParts && bodyParts.length > 0) {
+            const bodyPart = bodyParts[0].toLowerCase();
+            promptParts.push(`suitable for ${bodyPart} placement`);
+          }
+          
+          // Add quality descriptors for tattoo design
+          promptParts.push('clean line art', 'professional tattoo design', 'high quality', 'suitable for tattooing', 'tattoo flash art style');
+          
           replicatePrompt = promptParts.join(', ');
-          console.log('📝 Using image-referencing prompt for Replicate:', replicatePrompt);
-          console.log('   (High strength 0.95 + "tattoo of this image" ensures image is used)');
+          console.log('📝 Using tattoo design prompt for Replicate:', replicatePrompt);
+          console.log('   (Lower strength 0.6 will better transform portrait into tattoo design)');
         }
         
         // Prepare input for Replicate
@@ -215,7 +517,7 @@ export async function POST(request: NextRequest) {
           prompt: replicatePrompt,
           num_outputs: 1,
           aspect_ratio: '1:1',
-          negative_prompt: 'blurry, low quality, distorted, watermark, text',
+          negative_prompt: 'blurry, low quality, distorted, watermark, text, photo, photograph, realistic photo, 3d render, cgi, digital photo, camera, photograph style, photorealistic, realistic image, photo-realistic',
         };
 
         // Add reference image if provided (image-to-image)
@@ -227,22 +529,22 @@ export async function POST(request: NextRequest) {
           replicateInput.init_image = `data:${mimeType};base64,${referenceImage}`;
           // Strength controls how much the reference image influences the output
           // 0.0 = ignore reference, 1.0 = copy reference exactly
-          // Using 0.95 for MAXIMUM preservation of the original image likeness
-          // This ensures the generated image looks like the uploaded reference
-          replicateInput.strength = 0.95; // Maximum strength to preserve exact likeness
-          replicateInput.image_strength = 0.95; // Alternative parameter name some models use
-          replicateInput.strength_scale = 0.95; // Another alternative parameter name
+          // For portraits/selfies to tattoos, use lower strength (0.5-0.6) to allow more style transformation
+          // Lower strength = more transformation into tattoo style, less photo preservation
+          replicateInput.strength = 0.6; // Lower strength for better portrait-to-tattoo conversion
+          replicateInput.image_strength = 0.6; // Alternative parameter name some models use
+          replicateInput.strength_scale = 0.6; // Another alternative parameter name
           
           // Log the full request to verify image is being sent
           console.log('✅ Using reference image for Replicate image-to-image generation', {
-            strength: 0.95,
+            strength: 0.6,
             mimeType: mimeType,
             base64Length: referenceImage.length,
             estimatedSizeKB: Math.round(referenceImage.length * 3 / 4 / 1024),
             prompt: replicatePrompt,
             hasImage: !!replicateInput.image,
             hasInitImage: !!replicateInput.init_image,
-            note: 'High strength (0.95) + "tattoo of this image" to ensure image is used',
+            note: 'Lower strength (0.6) for better portrait-to-tattoo conversion, emphasizing line art and tattoo design',
           });
           
           // Also log a sample of the image data to verify it's not empty
@@ -276,7 +578,14 @@ export async function POST(request: NextRequest) {
             const errorText = await response.text();
             errorData = { error: errorText };
           }
-          throw new Error(`Replicate API error: ${errorData.error || errorData.detail || 'Unknown error'}`);
+          const errorMessage = errorData.error || errorData.detail || 'Unknown error';
+          console.error('❌ Replicate API request failed:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorMessage,
+            fullError: errorData,
+          });
+          throw new Error(`Replicate API error: ${errorMessage}`);
         }
 
         const prediction = await response.json();
@@ -526,7 +835,7 @@ export async function POST(request: NextRequest) {
           prompt: enhancedPrompt,
           num_outputs: 1,
           aspect_ratio: '1:1',
-          negative_prompt: 'blurry, low quality, distorted, watermark, text',
+          negative_prompt: 'blurry, low quality, distorted, watermark, text, photo, photograph, realistic photo, 3d render, cgi, digital photo, camera, photograph style, photorealistic, realistic image, photo-realistic',
         };
 
         // Add reference image if provided (image-to-image)
@@ -570,7 +879,14 @@ export async function POST(request: NextRequest) {
             const errorText = await response.text();
             errorData = { error: errorText };
           }
-          throw new Error(`Replicate API error: ${errorData.error || errorData.detail || 'Unknown error'}`);
+          const errorMessage = errorData.error || errorData.detail || 'Unknown error';
+          console.error('❌ Replicate API request failed:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorMessage,
+            fullError: errorData,
+          });
+          throw new Error(`Replicate API error: ${errorMessage}`);
         }
 
         const prediction = await response.json();
@@ -619,14 +935,19 @@ export async function POST(request: NextRequest) {
           throw new Error('SKIP'); // Skip silently if not configured
         }
 
-        console.log('Attempting Replicate image generation...');
+        console.log('🎨 Attempting Replicate image generation...');
+        console.log('🔑 Replicate API token check:', {
+          hasToken: !!replicateApiKey,
+          tokenLength: replicateApiKey?.length || 0,
+          tokenPrefix: replicateApiKey?.substring(0, 10) || 'none',
+        });
         
         // Prepare input for Replicate
         const replicateInput: any = {
           prompt: enhancedPrompt,
           num_outputs: 1,
           aspect_ratio: '1:1',
-          negative_prompt: 'blurry, low quality, distorted, watermark, text',
+          negative_prompt: 'blurry, low quality, distorted, watermark, text, photo, photograph, realistic photo, 3d render, cgi, digital photo, camera, photograph style, photorealistic, realistic image, photo-realistic',
         };
 
         // Add reference image if provided (image-to-image)
@@ -670,7 +991,14 @@ export async function POST(request: NextRequest) {
             const errorText = await response.text();
             errorData = { error: errorText };
           }
-          throw new Error(`Replicate API error: ${errorData.error || errorData.detail || 'Unknown error'}`);
+          const errorMessage = errorData.error || errorData.detail || 'Unknown error';
+          console.error('❌ Replicate API request failed:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorMessage,
+            fullError: errorData,
+          });
+          throw new Error(`Replicate API error: ${errorMessage}`);
         }
 
         const prediction = await response.json();
@@ -1091,28 +1419,81 @@ export async function POST(request: NextRequest) {
       replicateTokenLength: hasReplicateToken ? process.env.REPLICATE_API_TOKEN?.length || 0 : 0,
     });
     
-    // Reorder services to prioritize Replicate when configured
-    // This ensures Replicate is always tried first if it has a token
-    if (hasReplicateToken) {
-      // Find Replicate service index (should be 0, but check to be safe)
+    // Reorder services based on user preference or default priority
+    if (preferredService === 'replicate') {
+      // User wants Replicate first
       const replicateIndex = imageServices.findIndex((_, idx) => {
-        // Check if this is the Replicate service by checking service name
         const serviceName = serviceNames[idx];
         return serviceName && serviceName.includes('Replicate');
       });
       
       if (replicateIndex > 0) {
-        // Move Replicate to the front
         const replicateService = imageServices.splice(replicateIndex, 1)[0];
         const replicateServiceName = serviceNames.splice(replicateIndex, 1)[0];
         imageServices.unshift(replicateService);
         serviceNames.unshift(replicateServiceName);
-        console.log('✅ Replicate API token detected - moved Replicate to first position');
+        console.log('✅ User selected Replicate - moved to first position');
       } else if (replicateIndex === 0) {
-        console.log('✅ Replicate API token detected - Replicate is already first');
+        console.log('✅ User selected Replicate - already first');
+      } else {
+        console.log('⚠️ User selected Replicate but service not found');
+      }
+    } else if (preferredService === 'gemini') {
+      // User wants Gemini first
+      const geminiIndex = imageServices.findIndex((_, idx) => {
+        const serviceName = serviceNames[idx];
+        return serviceName && (serviceName.includes('Gemini') || serviceName.includes('Nano Banana'));
+      });
+      
+      if (geminiIndex > 0) {
+        const geminiService = imageServices.splice(geminiIndex, 1)[0];
+        const geminiServiceName = serviceNames.splice(geminiIndex, 1)[0];
+        imageServices.unshift(geminiService);
+        serviceNames.unshift(geminiServiceName);
+        console.log('✅ User selected Gemini - moved to first position');
+      } else if (geminiIndex === 0) {
+        console.log('✅ User selected Gemini - already first');
+      } else {
+        console.log('⚠️ User selected Gemini but service not found');
+      }
+    } else if (preferredService === 'vertex') {
+      // User wants Vertex AI first
+      const vertexIndex = imageServices.findIndex((_, idx) => {
+        const serviceName = serviceNames[idx];
+        return serviceName && serviceName.includes('Vertex AI');
+      });
+      
+      if (vertexIndex > 0) {
+        const vertexService = imageServices.splice(vertexIndex, 1)[0];
+        const vertexServiceName = serviceNames.splice(vertexIndex, 1)[0];
+        imageServices.unshift(vertexService);
+        serviceNames.unshift(vertexServiceName);
+        console.log('✅ User selected Vertex AI - moved to first position');
+      } else if (vertexIndex === 0) {
+        console.log('✅ User selected Vertex AI - already first');
+      } else {
+        console.log('⚠️ User selected Vertex AI but service not found');
       }
     } else {
-      console.log('⚠️ Replicate API token NOT found - will skip Replicate and use fallback services');
+      // Auto mode: prioritize Replicate when configured (default behavior)
+      if (hasReplicateToken) {
+        const replicateIndex = imageServices.findIndex((_, idx) => {
+          const serviceName = serviceNames[idx];
+          return serviceName && serviceName.includes('Replicate');
+        });
+        
+        if (replicateIndex > 0) {
+          const replicateService = imageServices.splice(replicateIndex, 1)[0];
+          const replicateServiceName = serviceNames.splice(replicateIndex, 1)[0];
+          imageServices.unshift(replicateService);
+          serviceNames.unshift(replicateServiceName);
+          console.log('✅ Auto mode: Replicate API token detected - moved to first position');
+        } else if (replicateIndex === 0) {
+          console.log('✅ Auto mode: Replicate API token detected - already first');
+        }
+      } else {
+        console.log('⚠️ Auto mode: Replicate API token NOT found - will use fallback services');
+      }
     }
 
     // Try each image generation service
@@ -1131,6 +1512,191 @@ export async function POST(request: NextRequest) {
         
         const serviceName = serviceNames[i] || `Service ${i + 1}`;
         console.log(`Image generation service ${i + 1} (${serviceName}) succeeded, image length: ${cleanedBase64.length}`);
+        
+        // If generateAllStyles is requested, generate the same design in all other styles
+        if (generateAllStyles && !referenceImage) {
+          console.log('🎨 Generating in all styles...');
+          const allStyleImages: Array<{ style: string; image: string }> = [];
+          
+          // Get the current selected style (use first style from filter set, or default to first in ALL_STYLES)
+          const currentStyle = (styles && styles.length > 0) ? styles[0] : ALL_STYLES[0];
+          
+          // Get all other styles (exclude the current one if it's in ALL_STYLES)
+          const otherStyles = ALL_STYLES.filter(s => s !== currentStyle);
+          
+          console.log(`Generating in ${otherStyles.length} additional styles (current: ${currentStyle})`);
+          
+          // Add the first image with its style
+          allStyleImages.push({
+            style: currentStyle,
+            image: cleanedBase64,
+          });
+          
+          // Generate in all other styles using Vertex AI
+          const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
+          const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
+          const credentialsJson = process.env.GOOGLE_CLOUD_CREDENTIALS;
+          
+          if (projectId && credentialsJson) {
+            try {
+              // Parse credentials
+              let credentials;
+              try {
+                credentials = JSON.parse(credentialsJson);
+              } catch (parseError) {
+                throw new Error('Invalid credentials JSON format');
+              }
+
+              // Get access token
+              const auth = new GoogleAuth({
+                credentials: credentials,
+                scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+              });
+
+              const client = await auth.getClient();
+              const accessToken = await client.getAccessToken();
+
+              if (accessToken.token) {
+                const apiEndpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagegeneration@006:predict`;
+
+                // Generate in each other style
+                for (const otherStyle of otherStyles) {
+                  try {
+                    console.log(`Generating ${otherStyle} style...`);
+                    
+                    // Build prompt for this style, keeping the same subject matter and placement
+                    const stylePromptParts: string[] = [];
+                    
+                    if (subjectMatter.trim()) {
+                      stylePromptParts.push(subjectMatter.trim());
+                    }
+                    
+                    // Add style-specific description
+                    const styleDescription = otherStyle.toLowerCase().includes('fine line') || otherStyle.toLowerCase().includes('fineline')
+                      ? 'fine line tattoo style, delicate thin lines, minimal shading'
+                      : otherStyle.toLowerCase().includes('traditional')
+                      ? 'traditional tattoo style, bold black outlines, solid colors'
+                      : otherStyle.toLowerCase().includes('realism')
+                      ? 'realistic tattoo style, detailed shading'
+                      : otherStyle.toLowerCase().includes('geometric')
+                      ? 'geometric tattoo style, clean lines, geometric patterns'
+                      : otherStyle.toLowerCase().includes('minimalist')
+                      ? 'minimalist tattoo style, simple clean design'
+                      : otherStyle.toLowerCase().includes('watercolor')
+                      ? 'watercolor tattoo style, soft flowing colors'
+                      : `${otherStyle} tattoo style`;
+                    
+                    stylePromptParts.push(styleDescription);
+                    
+                    // Add color preference
+                    if (colorPreference === 'color') {
+                      stylePromptParts.push('colorful tattoo', 'vibrant colors');
+                    } else {
+                      stylePromptParts.push('black and white tattoo', 'monochrome');
+                    }
+                    
+                    // Add size context
+                    if (sizePreference && sizePreference !== 'all') {
+                      if (sizePreference === 'small') {
+                        stylePromptParts.push('small tattoo design', 'compact composition');
+                      } else if (sizePreference === 'medium') {
+                        stylePromptParts.push('medium tattoo design', 'balanced composition');
+                      } else if (sizePreference === 'large') {
+                        stylePromptParts.push('large tattoo design', 'expansive composition');
+                      }
+                    }
+                    
+                    // Add body part context
+                    if (bodyParts && bodyParts.length > 0) {
+                      const bodyPart = bodyParts[0].toLowerCase();
+                      stylePromptParts.push(`suitable for ${bodyPart} placement`);
+                    }
+                    
+                    // Add quality descriptors
+                    stylePromptParts.push('clean line art', 'professional tattoo design', 'high quality', 'suitable for tattooing');
+                    
+                    const stylePrompt = stylePromptParts.join(', ');
+                    
+                    // Use the first generated image as reference to maintain same design/placement
+                    const instance: any = {
+                      prompt: stylePrompt,
+                      baseImage: {
+                        bytesBase64Encoded: cleanedBase64,
+                        mimeType: 'image/png',
+                      },
+                    };
+
+                    const requestBody = {
+                      instances: [instance],
+                      parameters: {
+                        sampleCount: 1,
+                        aspectRatio: '1:1',
+                        negativePrompt: 'blurry, low quality, distorted, watermark',
+                        guidanceScale: 3, // Medium guidance to transform style while keeping design
+                      },
+                    };
+
+                    const styleResponse = await fetch(apiEndpoint, {
+                      method: 'POST',
+                      headers: {
+                        'Authorization': `Bearer ${accessToken.token}`,
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify(requestBody),
+                    });
+
+                    if (styleResponse.ok) {
+                      const styleData = await styleResponse.json();
+                      
+                      if (styleData.predictions && styleData.predictions.length > 0) {
+                        const stylePrediction = styleData.predictions[0];
+                        let styleBase64Image: string | undefined;
+
+                        if (stylePrediction.bytesBase64Encoded) {
+                          styleBase64Image = stylePrediction.bytesBase64Encoded;
+                        } else if (stylePrediction.generatedImages && Array.isArray(stylePrediction.generatedImages) && stylePrediction.generatedImages.length > 0) {
+                          const imageData = stylePrediction.generatedImages[0];
+                          if (imageData.bytesBase64Encoded) {
+                            styleBase64Image = imageData.bytesBase64Encoded;
+                          }
+                        }
+
+                        if (styleBase64Image) {
+                          const cleanedStyleBase64 = String(styleBase64Image).replace(/\s/g, '').trim();
+                          allStyleImages.push({
+                            style: otherStyle,
+                            image: cleanedStyleBase64,
+                          });
+                          console.log(`✅ Generated ${otherStyle} style successfully`);
+                        }
+                      }
+                    } else {
+                      console.log(`⚠️ Failed to generate ${otherStyle} style, skipping...`);
+                    }
+                  } catch (styleError: any) {
+                    console.log(`⚠️ Error generating ${otherStyle} style: ${styleError.message}, skipping...`);
+                    // Continue with next style
+                  }
+                }
+              }
+            } catch (multiStyleError: any) {
+              console.error('Error in multi-style generation:', multiStyleError);
+              // Return the first image even if multi-style fails
+            }
+          }
+          
+          console.log(`✅ Generated ${allStyleImages.length} styles total`);
+          
+          return NextResponse.json({
+            success: true,
+            image: cleanedBase64, // Keep first image for backward compatibility
+            images: allStyleImages, // All style variations
+            mimeType: 'image/png',
+            prompt: enhancedPrompt,
+            model: serviceName,
+            allStyles: true,
+          });
+        }
         
         return NextResponse.json({
           success: true,
@@ -1156,6 +1722,14 @@ export async function POST(request: NextRequest) {
         if (serviceName.includes('Replicate') && hasReplicateToken) {
           console.error(`⚠️  WARNING: Replicate is configured but failed! Error: ${errorMsg}`);
           console.error(`   This means Replicate will be skipped and fallback services will be used.`);
+          
+          // Provide specific guidance for common errors
+          if (errorMsg.includes('insufficient credit') || errorMsg.includes('credit')) {
+            console.error(`   💡 ACTION REQUIRED: Add credits to your Replicate account at https://replicate.com/account/billing`);
+            console.error(`   After adding credits, wait a few minutes and try again.`);
+          } else if (errorMsg.includes('401') || errorMsg.includes('403') || errorMsg.includes('authentication')) {
+            console.error(`   💡 ACTION REQUIRED: Check your REPLICATE_API_TOKEN in .env.local and restart your server.`);
+          }
         }
         
         // Continue to next service

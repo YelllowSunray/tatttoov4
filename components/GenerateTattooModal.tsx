@@ -30,6 +30,9 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
   const [imageLoading, setImageLoading] = useState(false);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [preferredService, setPreferredService] = useState<'replicate' | 'vertex' | 'gemini' | 'auto'>('auto');
+  const [generateAllStyles, setGenerateAllStyles] = useState(false);
+  const [allStyleImages, setAllStyleImages] = useState<Array<{ style: string; image: string }>>([]);
 
   // Cleanup Blob URL when component unmounts or image changes
   useEffect(() => {
@@ -140,8 +143,9 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
   };
 
   const handleGenerate = async () => {
-    if (!subjectMatter.trim()) {
-      setError('Please enter subject matter for the tattoo');
+    // Subject matter is optional if reference image is provided
+    if (!referenceImage && !subjectMatter.trim()) {
+      setError('Please enter subject matter for the tattoo or upload a reference image');
       return;
     }
 
@@ -152,6 +156,7 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
     setGeneratedModel(null);
     setNeedsHuggingFaceKey(false);
     setImageLoading(false);
+    setAllStyleImages([]); // Reset all style images
 
     try {
       // Convert reference image to base64 if provided
@@ -183,6 +188,8 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
         bodyParts: filterSet.bodyParts,
         referenceImage: referenceImageBase64,
         referenceImageMimeType: referenceImageMimeType,
+        preferredService: preferredService !== 'auto' ? preferredService : undefined,
+        generateAllStyles: generateAllStyles && !referenceImageBase64, // Only if no reference image
       };
 
       console.log('📤 Sending generation request:', {
@@ -214,8 +221,55 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
         setGeneratedModel(data.model);
       }
 
-      // Check if we got an image
-      if (data.image) {
+      // Check if we got multiple style images
+      if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+        console.log(`✅ Received ${data.images.length} style variations`);
+        setAllStyleImages(data.images);
+        
+        // Set the first image as the main image
+        const firstImage = data.images[0];
+        const cleanBase64 = String(firstImage.image).replace(/\s/g, '').trim();
+        const mimeType = 'image/png';
+        
+        // Convert to blob URL
+        const base64SizeMB = cleanBase64.length * 3 / 4 / 1024 / 1024;
+        console.log(`Converting first image to Blob URL (${base64SizeMB.toFixed(2)}MB)`);
+        
+        let newBlobUrl: string | null = null;
+        try {
+          const binaryString = atob(cleanBase64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          
+          const blob = new Blob([bytes], { type: mimeType });
+          newBlobUrl = URL.createObjectURL(blob);
+          setBlobUrl(newBlobUrl);
+          
+          setImageLoading(true);
+          setGeneratedImage(newBlobUrl);
+          setSaved(false);
+        } catch (blobError: any) {
+          console.error('Failed to create Blob URL:', blobError);
+          const imageUrl = `data:${mimeType};base64,${cleanBase64}`;
+          setGeneratedImage(imageUrl);
+        }
+        
+        // Automatically save the first generated tattoo
+        if (user?.uid && newBlobUrl) {
+          const promptToSave = data.prompt || '';
+          if (promptToSave) {
+            saveGeneratedTattooToCollection(newBlobUrl, promptToSave);
+          }
+        }
+        
+        if (onSuccess && newBlobUrl) {
+          onSuccess(newBlobUrl);
+        }
+      }
+      // Check if we got a single image
+      else if (data.image) {
         // Clean the base64 string (remove any whitespace/newlines)
         let cleanBase64 = String(data.image).replace(/\s/g, '').trim();
         
@@ -409,12 +463,14 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
           </p>
         </div>
 
-        {/* Reference Image Upload - Temporarily Removed */}
-        {/* 
+        {/* Reference Image Upload */}
         <div className="mb-6">
           <label htmlFor="referenceImage" className="block text-sm font-medium text-black/80 mb-2">
             Reference Image (Optional)
           </label>
+          <p className="mb-3 text-xs text-black/50">
+            Upload a photo to convert into a tattoo design. Works best with Replicate AI.
+          </p>
           {!referenceImagePreview ? (
             <div className="border-2 border-dashed border-black/20 rounded-lg p-6 text-center hover:border-black/40 transition-colors">
               <input
@@ -486,10 +542,95 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
             </div>
           )}
           <p className="mt-2 text-xs text-black/50">
-            Upload an image to use as a reference for the tattoo generation
+            Upload an image to use as a reference for the tattoo generation. The AI will convert your photo into the selected tattoo style (e.g., fine line, traditional, etc.).
           </p>
         </div>
-        */}
+
+        {/* AI Service Selection */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-black/80 mb-2">
+            AI Service (Optional)
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setPreferredService('auto')}
+              disabled={loading}
+              className={`rounded-full border px-4 py-2.5 text-xs font-medium transition-all duration-200 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation ${
+                preferredService === 'auto'
+                  ? 'border-black bg-black text-white'
+                  : 'border-black/20 text-black/60 hover:border-black/40 hover:text-black'
+              }`}
+            >
+              Auto
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreferredService('replicate')}
+              disabled={loading}
+              className={`rounded-full border px-4 py-2.5 text-xs font-medium transition-all duration-200 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation ${
+                preferredService === 'replicate'
+                  ? 'border-black bg-black text-white'
+                  : 'border-black/20 text-black/60 hover:border-black/40 hover:text-black'
+              }`}
+            >
+              Replicate
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreferredService('gemini')}
+              disabled={loading}
+              className={`rounded-full border px-4 py-2.5 text-xs font-medium transition-all duration-200 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation ${
+                preferredService === 'gemini'
+                  ? 'border-black bg-black text-white'
+                  : 'border-black/20 text-black/60 hover:border-black/40 hover:text-black'
+              }`}
+            >
+              Gemini
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreferredService('vertex')}
+              disabled={loading}
+              className={`rounded-full border px-4 py-2.5 text-xs font-medium transition-all duration-200 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation ${
+                preferredService === 'vertex'
+                  ? 'border-black bg-black text-white'
+                  : 'border-black/20 text-black/60 hover:border-black/40 hover:text-black'
+              }`}
+            >
+              Vertex AI
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-black/50">
+            {preferredService === 'auto' && 'Automatically choose the best available service (recommended)'}
+            {preferredService === 'replicate' && 'Use Replicate AI (best for image-to-image, requires credits)'}
+            {preferredService === 'gemini' && 'Use Gemini Nano Banana (excellent for selfie to tattoo conversion)'}
+            {preferredService === 'vertex' && 'Use Vertex AI / Google Cloud (fallback if Replicate unavailable)'}
+          </p>
+        </div>
+
+        {/* Generate All Styles Option */}
+        {!referenceImage && (
+          <div className="mb-6">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={generateAllStyles}
+                onChange={(e) => setGenerateAllStyles(e.target.checked)}
+                disabled={loading}
+                className="w-5 h-5 border-black/20 rounded text-black focus:ring-2 focus:ring-black/20"
+              />
+              <div>
+                <span className="block text-sm font-medium text-black/80">
+                  Generate in All Styles
+                </span>
+                <span className="text-xs text-black/50">
+                  Generate the same design in all 15 tattoo styles (uses Vertex AI, may take longer)
+                </span>
+              </div>
+            </label>
+          </div>
+        )}
 
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 text-sm">
@@ -581,6 +722,41 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
               </a>
             </div>
             
+            {/* All Style Variations */}
+            {allStyleImages.length > 1 && (
+              <div className="mt-8 mb-6">
+                <h3 className="text-lg font-light text-black mb-4">
+                  All Style Variations ({allStyleImages.length} styles)
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                  {allStyleImages.map((styleImage, index) => {
+                    const imageUrl = `data:image/png;base64,${styleImage.image}`;
+                    return (
+                      <div key={index} className="border border-black/20 p-2 bg-black/5">
+                        <div className="aspect-square relative mb-2">
+                          <img
+                            src={imageUrl}
+                            alt={`${styleImage.style} style`}
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                        <p className="text-xs text-black/70 text-center font-medium mb-2">
+                          {styleImage.style}
+                        </p>
+                        <a
+                          href={imageUrl}
+                          download={`tattoo-${styleImage.style.replace(/[^a-zA-Z0-9]/g, '-')}.png`}
+                          className="block w-full rounded-full border border-black/30 px-3 py-1.5 text-xs font-medium text-black/70 transition-all duration-200 hover:bg-black hover:text-white active:bg-black/95 uppercase tracking-[0.05em] text-center"
+                        >
+                          Download
+                        </a>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            
             {/* Show the prompt that was used */}
             {generatedPrompt && (
               <div className="mt-4 border-t border-black/10 pt-4">
@@ -659,7 +835,7 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
         <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={handleGenerate}
-            disabled={loading || !subjectMatter.trim()}
+            disabled={loading || (!subjectMatter.trim() && !referenceImage)}
             className="flex-1 rounded-full bg-black px-6 py-3.5 text-xs font-medium text-white transition-all duration-200 hover:bg-black/90 active:bg-black/95 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Generating...' : 'Generate Tattoo'}
