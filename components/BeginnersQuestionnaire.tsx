@@ -39,6 +39,7 @@ export function BeginnersQuestionnaire() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [filterName, setFilterName] = useState('');
+  const [showAIGenerated, setShowAIGenerated] = useState(false);
   const [preferences, setPreferences] = useState<Omit<FilterSet, 'id' | 'name' | 'createdAt' | 'updatedAt'>>({
     styles: [],
     bodyParts: [],
@@ -298,12 +299,26 @@ export function BeginnersQuestionnaire() {
                     : 'Select one or more styles that catch your eye'}
                 </p>
               </div>
+              <div className="mb-6 flex items-center justify-center">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showAIGenerated}
+                    onChange={(e) => setShowAIGenerated(e.target.checked)}
+                    className="w-5 h-5 border-black/20 rounded text-black focus:ring-2 focus:ring-black/20"
+                  />
+                  <span className="text-sm font-medium text-black/80">
+                    AI generated Tattoos
+                  </span>
+                </label>
+              </div>
               <StyleSelection
                 styles={availableStyles}
                 tattoos={filteredTattoos}
                 selectedStyles={preferences.styles}
                 onSelect={handleStyleSelect}
                 showDescriptions={experienceLevel === 'beginner'}
+                showAIGenerated={showAIGenerated}
               />
             </>
           )}
@@ -636,9 +651,25 @@ interface StyleSelectionProps {
   selectedStyles: string[];
   onSelect: (style: string) => void;
   showDescriptions?: boolean;
+  showAIGenerated?: boolean;
 }
 
-function StyleSelection({ styles, tattoos, selectedStyles, onSelect, showDescriptions = false }: StyleSelectionProps) {
+// Map style names to AI image file names
+const AI_STYLE_IMAGE_MAP: Record<string, string> = {
+  'Black & Grey Realism': '/AI101/dancinginrain/tattoo-Black---Grey-Realism.png',
+  'Color Realism': '/AI101/dancinginrain/tattoo-Color-Realism.png',
+  'Portraits': '/AI101/dancinginrain/tattoo-Portraits.png',
+  'American Traditional': '/AI101/dancinginrain/tattoo-American-Traditional.png',
+  'Japanese (Irezumi)': '/AI101/dancinginrain/tattoo-Japanese--Irezumi-.png',
+  'Tribal / Polynesian': '/AI101/dancinginrain/tattoo-Tribal---Polynesian.png',
+  'Fine Line': '/AI101/dancinginrain/tattoo-Fine-Line.png',
+  'Minimalist': '/AI101/dancinginrain/tattoo-Minimalist.png',
+  'Neo-Traditional': '/AI101/dancinginrain/tattoo-Neo-Traditional.png',
+  'New School': '/AI101/dancinginrain/tattoo-New-School.png',
+  'Cartoon / Anime': '/AI101/dancinginrain/tattoo-Cartoon---Anime.png',
+};
+
+function StyleSelection({ styles, tattoos, selectedStyles, onSelect, showDescriptions = false, showAIGenerated = false }: StyleSelectionProps) {
   const tattoosByStyle = useMemo(() => {
     const grouped = new Map<string, Tattoo[]>();
     styles.forEach(style => {
@@ -650,9 +681,17 @@ function StyleSelection({ styles, tattoos, selectedStyles, onSelect, showDescrip
     return grouped;
   }, [styles, tattoos]);
 
+  // Filter styles to only show those with AI images when AI toggle is on
+  const visibleStyles = useMemo(() => {
+    if (showAIGenerated) {
+      return styles.filter(style => AI_STYLE_IMAGE_MAP[style]);
+    }
+    return styles;
+  }, [styles, showAIGenerated]);
+
   return (
     <div className="space-y-8">
-      {styles.map(style => {
+      {visibleStyles.map(style => {
         const styleTattoos = tattoosByStyle.get(style) || [];
         const isSelected = selectedStyles.includes(style);
         const description = STYLE_DESCRIPTIONS[style] || '';
@@ -692,7 +731,19 @@ function StyleSelection({ styles, tattoos, selectedStyles, onSelect, showDescrip
                   </div>
                 )}
               </div>
-              {styleTattoos.length > 0 && (
+              {showAIGenerated && AI_STYLE_IMAGE_MAP[style] ? (
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                  <div className="relative aspect-square overflow-hidden bg-black">
+                    <Image
+                      src={AI_STYLE_IMAGE_MAP[style]}
+                      alt={`AI generated ${style} tattoo`}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 640px) 33vw, 16vw"
+                    />
+                  </div>
+                </div>
+              ) : !showAIGenerated && styleTattoos.length > 0 ? (
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                   {styleTattoos.map(tattoo => (
                     <div
@@ -709,7 +760,7 @@ function StyleSelection({ styles, tattoos, selectedStyles, onSelect, showDescrip
                     </div>
                   ))}
                 </div>
-              )}
+              ) : null}
             </div>
           </button>
         );
