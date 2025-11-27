@@ -84,6 +84,9 @@ export async function POST(request: NextRequest) {
     promptParts.push('clean line art', 'professional tattoo design', 'high quality', 'detailed', 'tattoo stencil style', 'suitable for tattooing');
     
     const enhancedPrompt = promptParts.join(', ');
+    
+    // Log the prompt for debugging
+    console.log('Generated prompt:', enhancedPrompt);
 
     // Try multiple image generation services
     const imageServices = [

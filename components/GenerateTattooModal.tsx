@@ -15,6 +15,8 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
   const [error, setError] = useState('');
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [generatedDescription, setGeneratedDescription] = useState<string | null>(null);
+  const [generatedPrompt, setGeneratedPrompt] = useState<string | null>(null);
+  const [showPrompt, setShowPrompt] = useState(false);
   const [needsHuggingFaceKey, setNeedsHuggingFaceKey] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
@@ -61,6 +63,11 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to generate tattoo');
+      }
+
+      // Store the prompt if provided
+      if (data.prompt) {
+        setGeneratedPrompt(data.prompt);
       }
 
       // Check if we got an image
@@ -320,6 +327,32 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
                 Download
               </a>
             </div>
+            
+            {/* Show the prompt that was used */}
+            {generatedPrompt && (
+              <div className="mt-4 border-t border-black/10 pt-4">
+                <button
+                  onClick={() => setShowPrompt(!showPrompt)}
+                  className="w-full flex items-center justify-between text-sm text-black/60 hover:text-black transition-colors"
+                >
+                  <span className="font-medium">View Prompt Used</span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className={`h-4 w-4 transition-transform ${showPrompt ? 'rotate-180' : ''}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showPrompt && (
+                  <div className="mt-3 p-3 bg-black/5 border border-black/10 rounded text-xs text-black/70 font-mono whitespace-pre-wrap break-words">
+                    {generatedPrompt}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
