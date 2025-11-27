@@ -654,19 +654,81 @@ interface StyleSelectionProps {
   showAIGenerated?: boolean;
 }
 
-// Map style names to AI image file names
-const AI_STYLE_IMAGE_MAP: Record<string, string> = {
-  'Black & Grey Realism': '/AI101/dancinginrain/tattoo-Black---Grey-Realism.png',
-  'Color Realism': '/AI101/dancinginrain/tattoo-Color-Realism.png',
-  'Portraits': '/AI101/dancinginrain/tattoo-Portraits.png',
-  'American Traditional': '/AI101/dancinginrain/tattoo-American-Traditional.png',
-  'Japanese (Irezumi)': '/AI101/dancinginrain/tattoo-Japanese--Irezumi-.png',
-  'Tribal / Polynesian': '/AI101/dancinginrain/tattoo-Tribal---Polynesian.png',
-  'Fine Line': '/AI101/dancinginrain/tattoo-Fine-Line.png',
-  'Minimalist': '/AI101/dancinginrain/tattoo-Minimalist.png',
-  'Neo-Traditional': '/AI101/dancinginrain/tattoo-Neo-Traditional.png',
-  'New School': '/AI101/dancinginrain/tattoo-New-School.png',
-  'Cartoon / Anime': '/AI101/dancinginrain/tattoo-Cartoon---Anime.png',
+// Map style names to AI image file names (arrays to support multiple images per category)
+const AI_STYLE_IMAGE_MAP: Record<string, string[]> = {
+  'Black & Grey Realism': [
+    '/AI101/dancinginrain/tattoo-Black---Grey-Realism.png',
+    '/AI101/tiger/tattoo-Black---Grey-Realism.png',
+    '/AI101/flowers/tattoo-Black---Grey-Realism.png',
+    '/AI101/flowers/tattoo-Black---Grey-Realism (1).png',
+  ],
+  'Color Realism': [
+    '/AI101/dancinginrain/tattoo-Color-Realism.png',
+    '/AI101/tiger/tattoo-Color-Realism.png',
+    '/AI101/flowers/tattoo-Color-Realism.png',
+  ],
+  'Portraits': [
+    '/AI101/dancinginrain/tattoo-Portraits.png',
+    '/AI101/tiger/tattoo-Portraits.png',
+    '/AI101/flowers/tattoo-Portraits.png',
+    '/AI101/flowers/tattoo-Portraits (1).png',
+  ],
+  'American Traditional': [
+    '/AI101/dancinginrain/tattoo-American-Traditional.png',
+    '/AI101/tiger/tattoo-American-Traditional.png',
+    '/AI101/flowers/tattoo-American-Traditional.png',
+    '/AI101/flowers/tattoo-American-Traditional (1).png',
+  ],
+  'Japanese (Irezumi)': [
+    '/AI101/dancinginrain/tattoo-Japanese--Irezumi-.png',
+    '/AI101/tiger/tattoo-Japanese--Irezumi-.png',
+    '/AI101/flowers/tattoo-Japanese--Irezumi-.png',
+  ],
+  'Tribal / Polynesian': [
+    '/AI101/dancinginrain/tattoo-Tribal---Polynesian.png',
+    '/AI101/tiger/tattoo-Tribal---Polynesian.png',
+  ],
+  'Fine Line': [
+    '/AI101/dancinginrain/tattoo-Fine-Line.png',
+    '/AI101/tiger/tattoo-Fine-Line.png',
+    '/AI101/flowers/tattoo-Fine-Line.png',
+  ],
+  'Minimalist': [
+    '/AI101/dancinginrain/tattoo-Minimalist.png',
+    '/AI101/tiger/tattoo-Minimalist.png',
+    '/AI101/flowers/tattoo-Minimalist.png',
+  ],
+  'Neo-Traditional': [
+    '/AI101/dancinginrain/tattoo-Neo-Traditional.png',
+    '/AI101/tiger/tattoo-Neo-Traditional.png',
+    '/AI101/flowers/tattoo-Neo-Traditional.png',
+  ],
+  'New School': [
+    '/AI101/dancinginrain/tattoo-New-School.png',
+    '/AI101/tiger/tattoo-New-School.png',
+    '/AI101/flowers/tattoo-New-School.png',
+  ],
+  'Cartoon / Anime': [
+    '/AI101/dancinginrain/tattoo-Cartoon---Anime.png',
+    '/AI101/tiger/tattoo-Cartoon---Anime.png',
+    '/AI101/flowers/tattoo-Cartoon---Anime.png',
+  ],
+  'Abstract / Sketch': [
+    '/AI101/tiger/tattoo-Abstract---Sketch.png',
+    '/AI101/flowers/tattoo-Abstract---Sketch.png',
+  ],
+  'Geometric / Dotwork': [
+    '/AI101/tiger/tattoo-Geometric---Dotwork.png',
+    '/AI101/flowers/tattoo-Geometric---Dotwork.png',
+  ],
+  'Single Needle': [
+    '/AI101/tiger/tattoo-Single-Needle.png',
+    '/AI101/flowers/tattoo-Single-Needle.png',
+  ],
+  'Watercolor': [
+    '/AI101/tiger/tattoo-Watercolor.png',
+    '/AI101/flowers/tattoo-Watercolor.png',
+  ],
 };
 
 function StyleSelection({ styles, tattoos, selectedStyles, onSelect, showDescriptions = false, showAIGenerated = false }: StyleSelectionProps) {
@@ -684,7 +746,7 @@ function StyleSelection({ styles, tattoos, selectedStyles, onSelect, showDescrip
   // Filter styles to only show those with AI images when AI toggle is on
   const visibleStyles = useMemo(() => {
     if (showAIGenerated) {
-      return styles.filter(style => AI_STYLE_IMAGE_MAP[style]);
+      return styles.filter(style => AI_STYLE_IMAGE_MAP[style] && AI_STYLE_IMAGE_MAP[style].length > 0);
     }
     return styles;
   }, [styles, showAIGenerated]);
@@ -731,17 +793,19 @@ function StyleSelection({ styles, tattoos, selectedStyles, onSelect, showDescrip
                   </div>
                 )}
               </div>
-              {showAIGenerated && AI_STYLE_IMAGE_MAP[style] ? (
+              {showAIGenerated && AI_STYLE_IMAGE_MAP[style] && AI_STYLE_IMAGE_MAP[style].length > 0 ? (
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                  <div className="relative aspect-square overflow-hidden bg-black">
-                    <Image
-                      src={AI_STYLE_IMAGE_MAP[style]}
-                      alt={`AI generated ${style} tattoo`}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 640px) 33vw, 16vw"
-                    />
-                  </div>
+                  {AI_STYLE_IMAGE_MAP[style].map((imageSrc, index) => (
+                    <div key={index} className="relative aspect-square overflow-hidden bg-black">
+                      <Image
+                        src={imageSrc}
+                        alt={`AI generated ${style} tattoo ${index + 1}`}
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 640px) 33vw, 16vw"
+                      />
+                    </div>
+                  ))}
                 </div>
               ) : !showAIGenerated && styleTattoos.length > 0 ? (
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">

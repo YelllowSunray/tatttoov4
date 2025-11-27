@@ -142,6 +142,62 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
     }
   };
 
+  // Function to download all style variations as a ZIP file
+  const handleDownloadAll = async () => {
+    if (allStyleImages.length === 0) return;
+
+    try {
+      // Dynamically import JSZip
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+
+      // Add each image to the zip
+      for (const styleImage of allStyleImages) {
+        const base64Data = styleImage.image;
+        // Remove data URL prefix if present
+        const base64 = base64Data.includes(',') 
+          ? base64Data.split(',')[1] 
+          : base64Data;
+        
+        // Convert base64 to binary
+        const binaryString = atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        // Sanitize filename
+        const fileName = `tattoo-${styleImage.style.replace(/[^a-zA-Z0-9]/g, '-')}.png`;
+        zip.file(fileName, bytes);
+      }
+
+      // Generate zip file
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `tattoo-all-styles-${Date.now()}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error creating zip file:', error);
+      // Fallback: download images one by one
+      allStyleImages.forEach((styleImage, index) => {
+        setTimeout(() => {
+          const imageUrl = `data:image/png;base64,${styleImage.image}`;
+          const link = document.createElement('a');
+          link.href = imageUrl;
+          link.download = `tattoo-${styleImage.style.replace(/[^a-zA-Z0-9]/g, '-')}.png`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }, index * 200); // Stagger downloads
+      });
+    }
+  };
+
   const handleGenerate = async () => {
     // Subject matter is optional if reference image is provided
     if (!referenceImage && !subjectMatter.trim()) {
@@ -581,9 +637,17 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
             {/* All Style Variations */}
             {allStyleImages.length > 1 && (
               <div className="mt-8 mb-6">
-                <h3 className="text-lg font-light text-black mb-4">
-                  All Style Variations ({allStyleImages.length} styles)
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-light text-black">
+                    All Style Variations ({allStyleImages.length} styles)
+                  </h3>
+                  <button
+                    onClick={handleDownloadAll}
+                    className="rounded-full border border-black px-4 py-2 text-xs font-medium text-black transition-all duration-200 hover:bg-black hover:text-white active:bg-black/95 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation"
+                  >
+                    Download All
+                  </button>
+                </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                   {allStyleImages.map((styleImage, index) => {
                     const imageUrl = `data:image/png;base64,${styleImage.image}`;
