@@ -71,9 +71,9 @@ export function Gallery({ onRequireAuth, initialFilters }: GalleryProps) {
     loadData();
   }, [loadData]);
 
-  // Apply saved preferences from beginners questionnaire or user profile
-  // NOTE: When gallery loads/reloads, filters are CLEARED first, then preferences are applied
-  // This ensures a clean state on page load
+  // Apply saved preferences from beginners questionnaire only
+  // NOTE: When gallery loads/reloads, filters are CLEARED first
+  // Filter sets from user profile are only applied when user explicitly clicks "Apply" in profile modal
   useEffect(() => {
     const applyPreferences = async () => {
       // Start with cleared filters
@@ -89,7 +89,8 @@ export function Gallery({ onRequireAuth, initialFilters }: GalleryProps) {
         sortBy: 'newest',
       };
 
-      // First check localStorage (for immediate redirect from questionnaire)
+      // Only check localStorage (for immediate redirect from questionnaire)
+      // Do NOT automatically apply user profile filter sets on login
       const savedPreferences = localStorage.getItem('tattooPreferences');
       if (savedPreferences) {
         try {
@@ -121,46 +122,9 @@ export function Gallery({ onRequireAuth, initialFilters }: GalleryProps) {
           console.error('Error parsing saved preferences:', err);
           setFilters(defaultFilters);
         }
-      } else if (user?.uid) {
-        // If no localStorage preferences, check user profile for the most recent filter set
-        try {
-          const userPrefs = await getUserPreferences(user.uid);
-          if (userPrefs && userPrefs.filterSets && userPrefs.filterSets.length > 0) {
-            // Use the most recently updated filter set
-            const mostRecent = userPrefs.filterSets.sort((a, b) => 
-              (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0)
-            )[0];
-            
-            // Apply preferences to cleared filters
-            if (mostRecent.styles && mostRecent.styles.length > 0) {
-              defaultFilters.style = mostRecent.styles[0];
-            }
-            
-            if (mostRecent.bodyParts && mostRecent.bodyParts.length > 0) {
-              defaultFilters.bodyPart = mostRecent.bodyParts[0];
-            }
-            
-            if (mostRecent.colorPreference) {
-              if (mostRecent.colorPreference === 'color') {
-                defaultFilters.color = 'color';
-              } else if (mostRecent.colorPreference === 'bw') {
-                defaultFilters.color = 'bw';
-              } else {
-                defaultFilters.color = 'all';
-              }
-            }
-            
-            setFilters(defaultFilters);
-          } else {
-            // No filter sets found, just clear filters
-            setFilters(defaultFilters);
-          }
-        } catch (err) {
-          console.error('Error loading user preferences:', err);
-          setFilters(defaultFilters);
-        }
       } else {
-        // No user, just clear filters
+        // No localStorage preferences, just use cleared filters
+        // This ensures gallery loads with no filters when user logs in
         setFilters(defaultFilters);
       }
     };

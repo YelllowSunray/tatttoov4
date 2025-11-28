@@ -246,7 +246,15 @@ export function ProfileModal({ onClose, onApplyFilters, showWelcomeMessage = fal
                       Apply
                     </button>
                     <button
-                      onClick={() => setGeneratingForFilterSet(filterSet)}
+                      onClick={() => {
+                        setGeneratingForFilterSet(filterSet);
+                        // Scroll window to top when opening generate modal
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        // Also try scrolling after a short delay to ensure modal is rendered
+                        setTimeout(() => {
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }, 100);
+                      }}
                       className="rounded-full bg-black px-5 py-2.5 text-xs font-medium text-white transition-all duration-200 hover:bg-black/90 active:bg-black/95 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation whitespace-nowrap"
                     >
                       Generate Tattoo

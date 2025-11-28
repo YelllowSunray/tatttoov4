@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { FilterSet } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { saveGeneratedTattoo } from '@/lib/firestore';
@@ -33,6 +33,80 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
   const [preferredService, setPreferredService] = useState<'replicate' | 'vertex' | 'gemini' | 'auto'>('vertex');
   const [generateAllStyles, setGenerateAllStyles] = useState(false);
   const [allStyleImages, setAllStyleImages] = useState<Array<{ style: string; image: string }>>([]);
+  const modalContentRef = useRef<HTMLDivElement>(null);
+  const modalOuterRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to top of form when modal opens - use useLayoutEffect for immediate DOM access
+  useLayoutEffect(() => {
+    // Instantly scroll everything to top
+    const scrollToTop = () => {
+      // Scroll window to top
+      window.scrollTo(0, 0);
+      
+      // Scroll outer modal container (the fixed overlay)
+      if (modalOuterRef.current) {
+        modalOuterRef.current.scrollTop = 0;
+      }
+      
+      // Scroll inner modal content (the white box)
+      if (modalContentRef.current) {
+        modalContentRef.current.scrollTop = 0;
+      }
+    };
+
+    // Do instant scroll immediately in layout effect
+    scrollToTop();
+  }, []);
+
+  // Also use useEffect as a backup with multiple attempts
+  useEffect(() => {
+    const scrollToTop = () => {
+      // Scroll window
+      window.scrollTo(0, 0);
+      
+      // Scroll outer modal container
+      if (modalOuterRef.current) {
+        modalOuterRef.current.scrollTop = 0;
+      }
+      
+      // Scroll inner modal content
+      if (modalContentRef.current) {
+        modalContentRef.current.scrollTop = 0;
+      }
+      
+      // Try scrolling form into view
+      if (formRef.current) {
+        formRef.current.scrollIntoView({ behavior: 'auto', block: 'start' });
+      }
+    };
+
+    // Try multiple times to catch any timing issues
+    scrollToTop();
+    const timer1 = setTimeout(scrollToTop, 10);
+    const timer2 = setTimeout(scrollToTop, 50);
+    const timer3 = setTimeout(scrollToTop, 150);
+    const timer4 = setTimeout(() => {
+      // Final attempt with smooth scroll
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (modalOuterRef.current) {
+        modalOuterRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      if (modalContentRef.current) {
+        modalContentRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      if (formRef.current) {
+        formRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 200);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+      clearTimeout(timer4);
+    };
+  }, []);
 
   // Cleanup Blob URL when component unmounts or image changes
   useEffect(() => {
@@ -452,10 +526,12 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
 
   return (
     <div
+      ref={modalOuterRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto"
       onClick={onClose}
     >
       <div
+        ref={modalContentRef}
         className="w-full max-w-2xl border border-black/20 bg-white p-6 sm:p-8 md:p-10 my-auto max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
@@ -476,9 +552,10 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
           </svg>
         </button>
 
-        <h2 className="mb-6 text-2xl sm:text-3xl font-light tracking-[-0.02em] text-black">
-          Generate Tattoo Design
-        </h2>
+        <div ref={formRef}>
+          <h2 className="mb-6 text-2xl sm:text-3xl font-light tracking-[-0.02em] text-black">
+            Generate Tattoo Design
+          </h2>
 
         <div className="mb-6 p-4 bg-black/5 border border-black/10">
           <p className="text-sm text-black/60 mb-2">
@@ -766,6 +843,7 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
           >
             Close
           </button>
+        </div>
         </div>
       </div>
     </div>
