@@ -33,9 +33,32 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
   const [preferredService, setPreferredService] = useState<'replicate' | 'vertex' | 'gemini' | 'auto'>('vertex');
   const [generateAllStyles, setGenerateAllStyles] = useState(false);
   const [allStyleImages, setAllStyleImages] = useState<Array<{ style: string; image: string }>>([]);
+  const [selectedStyleImage, setSelectedStyleImage] = useState<{ style: string; image: string; index: number } | null>(null);
+  const [savedStyleImages, setSavedStyleImages] = useState<Set<number>>(new Set());
+  const [savingStyleIndex, setSavingStyleIndex] = useState<number | null>(null);
   const modalContentRef = useRef<HTMLDivElement>(null);
   const modalOuterRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
+
+  // Keyboard navigation for style image modal
+  useEffect(() => {
+    if (!selectedStyleImage || allStyleImages.length === 0) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft' && selectedStyleImage.index > 0) {
+        const prevIndex = selectedStyleImage.index - 1;
+        setSelectedStyleImage({ ...allStyleImages[prevIndex], index: prevIndex });
+      } else if (e.key === 'ArrowRight' && selectedStyleImage.index < allStyleImages.length - 1) {
+        const nextIndex = selectedStyleImage.index + 1;
+        setSelectedStyleImage({ ...allStyleImages[nextIndex], index: nextIndex });
+      } else if (e.key === 'Escape') {
+        setSelectedStyleImage(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedStyleImage, allStyleImages]);
 
   // Scroll to top of form when modal opens - use useLayoutEffect for immediate DOM access
   useLayoutEffect(() => {
@@ -172,6 +195,73 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
+  };
+
+  // Convert base64 string to File
+  const base64ToFile = (base64: string, fileName: string): File => {
+    // Remove data URL prefix if present
+    const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return new File([bytes], fileName, { type: 'image/png' });
+  };
+
+  // Function to save individual style image to Firestore
+  const saveStyleImageToCollection = async (styleImage: { style: string; image: string }, index: number) => {
+    if (!user?.uid) {
+      console.log('User not authenticated, skipping save');
+      return;
+    }
+
+    if (savedStyleImages.has(index)) {
+      console.log('Style image already saved');
+      return;
+    }
+
+    setSavingStyleIndex(index);
+    try {
+      // Convert base64 to File
+      const file = base64ToFile(styleImage.image, `generated-tattoo-${styleImage.style.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}.png`);
+      
+      // Create a temporary ID for the tattoo
+      const tempTattooId = `gen_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Upload image to Firebase Storage
+      const imagePath = getGeneratedTattooImagePath(user.uid, tempTattooId);
+      const uploadedImageUrl = await uploadImage(file, imagePath);
+      
+      // Use the prompt from the first generated image if available, or create a basic one
+      const promptToSave = generatedPrompt || `Tattoo design in ${styleImage.style} style: ${subjectMatter.trim() || 'Custom design'}`;
+      
+      // Save tattoo data to Firestore with specific style
+      const tattooId = await saveGeneratedTattoo(user.uid, {
+        imageUrl: uploadedImageUrl,
+        prompt: promptToSave,
+        subjectMatter: `${subjectMatter.trim() || 'Custom design'} (${styleImage.style})`,
+        filterSetId: filterSet.id,
+        filterSetName: filterSet.name,
+        styles: [styleImage.style], // Save with the specific style
+        sizePreference: filterSet.sizePreference || undefined,
+        colorPreference: filterSet.colorPreference || undefined,
+        bodyParts: filterSet.bodyParts,
+      });
+      
+      console.log('✅ Style image saved successfully:', tattooId);
+      setSavedStyleImages(prev => new Set(prev).add(index));
+      
+      // Refresh generated tattoos list if onSuccess callback is available
+      if (onSuccess) {
+        onSuccess(uploadedImageUrl);
+      }
+    } catch (err: any) {
+      console.error('Failed to save style image:', err);
+      alert('Failed to save tattoo. Please try again.');
+    } finally {
+      setSavingStyleIndex(null);
+    }
   };
 
   // Function to save generated tattoo to Firestore
@@ -733,9 +823,14 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                   {allStyleImages.map((styleImage, index) => {
                     const imageUrl = `data:image/png;base64,${styleImage.image}`;
+                    const isSaved = savedStyleImages.has(index);
+                    const isSaving = savingStyleIndex === index;
                     return (
                       <div key={index} className="border border-black/20 p-2 bg-black/5">
-                        <div className="aspect-square relative mb-2">
+                        <div 
+                          className="aspect-square relative mb-2 cursor-pointer hover:opacity-90 transition-opacity"
+                          onClick={() => setSelectedStyleImage({ ...styleImage, index })}
+                        >
                           <img
                             src={imageUrl}
                             alt={`${styleImage.style} style`}
@@ -745,13 +840,41 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
                         <p className="text-xs text-black/70 text-center font-medium mb-2">
                           {styleImage.style}
                         </p>
-                        <a
-                          href={imageUrl}
-                          download={`tattoo-${styleImage.style.replace(/[^a-zA-Z0-9]/g, '-')}.png`}
-                          className="block w-full rounded-full border border-black/30 px-3 py-1.5 text-xs font-medium text-black/70 transition-all duration-200 hover:bg-black hover:text-white active:bg-black/95 uppercase tracking-[0.05em] text-center"
-                        >
-                          Download
-                        </a>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              saveStyleImageToCollection(styleImage, index);
+                            }}
+                            disabled={isSaved || isSaving}
+                            className={`flex-1 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200 uppercase tracking-[0.05em] text-center min-h-[32px] ${
+                              isSaved
+                                ? 'border-green-600 bg-green-50 text-green-700 cursor-not-allowed'
+                                : isSaving
+                                ? 'border-black/30 text-black/50 cursor-not-allowed'
+                                : 'border-black/30 text-black/70 hover:bg-black hover:text-white active:bg-black/95'
+                            }`}
+                          >
+                            {isSaved ? '✓ Saved' : isSaving ? 'Saving...' : 'Save'}
+                          </button>
+                          <a
+                            href={imageUrl}
+                            download={`tattoo-${styleImage.style.replace(/[^a-zA-Z0-9]/g, '-')}.png`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="rounded-full border border-black/30 px-3 py-1.5 text-xs font-medium text-black/70 transition-all duration-200 hover:bg-black hover:text-white active:bg-black/95 uppercase tracking-[0.05em] text-center min-h-[32px] flex items-center justify-center"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                          </a>
+                        </div>
                       </div>
                     );
                   })}
@@ -851,6 +974,125 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
         </div>
         </div>
       </div>
+
+      {/* Full Screen Style Image Modal */}
+      {selectedStyleImage && allStyleImages.length > 0 && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95 backdrop-blur-sm p-4"
+          onClick={() => setSelectedStyleImage(null)}
+        >
+          <div
+            className="relative w-full h-full max-w-7xl max-h-[90vh] flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setSelectedStyleImage(null)}
+              className="absolute top-4 right-4 z-10 bg-black/80 text-white rounded-full p-3 hover:bg-black transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+              aria-label="Close"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Previous Button */}
+            {selectedStyleImage.index > 0 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const prevIndex = selectedStyleImage.index - 1;
+                  setSelectedStyleImage({ ...allStyleImages[prevIndex], index: prevIndex });
+                }}
+                className="absolute left-4 z-10 bg-black/80 text-white rounded-full p-3 hover:bg-black transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                aria-label="Previous"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            )}
+
+            {/* Next Button */}
+            {selectedStyleImage.index < allStyleImages.length - 1 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const nextIndex = selectedStyleImage.index + 1;
+                  setSelectedStyleImage({ ...allStyleImages[nextIndex], index: nextIndex });
+                }}
+                className="absolute right-4 z-10 bg-black/80 text-white rounded-full p-3 hover:bg-black transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                aria-label="Next"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            )}
+
+            <div className="relative w-full h-full flex flex-col items-center justify-center pb-20">
+              <div className="relative w-full h-full flex items-center justify-center">
+                <img
+                  src={`data:image/png;base64,${selectedStyleImage.image}`}
+                  alt={`${selectedStyleImage.style} style`}
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/60 to-transparent p-6 text-white">
+                <p className="text-sm font-medium mb-3">
+                  {selectedStyleImage.style} ({selectedStyleImage.index + 1} of {allStyleImages.length})
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      saveStyleImageToCollection(selectedStyleImage, selectedStyleImage.index);
+                    }}
+                    disabled={savedStyleImages.has(selectedStyleImage.index) || savingStyleIndex === selectedStyleImage.index}
+                    className={`rounded-full border px-4 py-2 text-xs font-medium transition-all duration-200 uppercase tracking-[0.05em] min-h-[44px] ${
+                      savedStyleImages.has(selectedStyleImage.index)
+                        ? 'border-green-400 bg-green-500/20 text-green-300 cursor-not-allowed'
+                        : savingStyleIndex === selectedStyleImage.index
+                        ? 'border-white/30 text-white/50 cursor-not-allowed'
+                        : 'border-white/30 text-white hover:bg-white hover:text-black active:bg-white/95'
+                    }`}
+                  >
+                    {savedStyleImages.has(selectedStyleImage.index) ? '✓ Saved' : savingStyleIndex === selectedStyleImage.index ? 'Saving...' : 'Save'}
+                  </button>
+                  <a
+                    href={`data:image/png;base64,${selectedStyleImage.image}`}
+                    download={`tattoo-${selectedStyleImage.style.replace(/[^a-zA-Z0-9]/g, '-')}.png`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="rounded-full border border-white/30 px-4 py-2 text-xs font-medium text-white transition-all duration-200 hover:bg-white hover:text-black active:bg-white/95 uppercase tracking-[0.05em] min-h-[44px] flex items-center justify-center"
+                  >
+                    Download
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

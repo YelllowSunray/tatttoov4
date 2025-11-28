@@ -732,6 +732,8 @@ const AI_STYLE_IMAGE_MAP: Record<string, string[]> = {
 };
 
 function StyleSelection({ styles, tattoos, selectedStyles, onSelect, showDescriptions = false, showAIGenerated = false }: StyleSelectionProps) {
+  const [selectedImage, setSelectedImage] = useState<{ src: string; alt: string } | null>(null);
+
   const tattoosByStyle = useMemo(() => {
     const grouped = new Map<string, Tattoo[]>();
     styles.forEach(style => {
@@ -759,9 +761,8 @@ function StyleSelection({ styles, tattoos, selectedStyles, onSelect, showDescrip
         const description = STYLE_DESCRIPTIONS[style] || '';
         
         return (
-          <button
+          <div
             key={style}
-            onClick={() => onSelect(style)}
             className={`w-full text-left border-2 transition-all duration-200 ${
               isSelected
                 ? 'border-black bg-black/5'
@@ -778,25 +779,28 @@ function StyleSelection({ styles, tattoos, selectedStyles, onSelect, showDescrip
                     </p>
                   )}
                 </div>
-                {isSelected && (
-                  <div className="w-6 h-6 rounded-full bg-black flex items-center justify-center shrink-0 ml-4">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-4 w-4 text-white"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                )}
+                <button
+                  onClick={() => onSelect(style)}
+                  className={`shrink-0 ml-4 rounded-full border px-4 py-2 text-xs font-medium transition-all duration-200 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation ${
+                    isSelected
+                      ? 'border-black bg-black text-white hover:bg-black/90'
+                      : 'border-black/20 text-black/60 hover:border-black/40 hover:text-black active:bg-black/5'
+                  }`}
+                >
+                  {isSelected ? 'Selected' : 'Select'}
+                </button>
               </div>
               {showAIGenerated && AI_STYLE_IMAGE_MAP[style] && AI_STYLE_IMAGE_MAP[style].length > 0 ? (
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                   {AI_STYLE_IMAGE_MAP[style].map((imageSrc, index) => (
-                    <div key={index} className="relative aspect-square overflow-hidden bg-black">
+                    <div
+                      key={index}
+                      className="relative aspect-square overflow-hidden bg-black cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedImage({ src: imageSrc, alt: `AI generated ${style} tattoo ${index + 1}` });
+                      }}
+                    >
                       <Image
                         src={imageSrc}
                         alt={`AI generated ${style} tattoo ${index + 1}`}
@@ -812,7 +816,11 @@ function StyleSelection({ styles, tattoos, selectedStyles, onSelect, showDescrip
                   {styleTattoos.map(tattoo => (
                     <div
                       key={tattoo.id}
-                      className="relative aspect-square overflow-hidden bg-black"
+                      className="relative aspect-square overflow-hidden bg-black cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedImage({ src: tattoo.imageUrl, alt: tattoo.description || style });
+                      }}
                     >
                       <Image
                         src={tattoo.imageUrl}
@@ -826,9 +834,46 @@ function StyleSelection({ styles, tattoos, selectedStyles, onSelect, showDescrip
                 </div>
               ) : null}
             </div>
-          </button>
+          </div>
         );
       })}
+
+      {/* Full Screen Image Modal */}
+      {selectedImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-sm p-4"
+          onClick={() => setSelectedImage(null)}
+        >
+          <div
+            className="relative w-full h-full max-w-7xl max-h-[90vh] flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setSelectedImage(null)}
+              className="absolute top-4 right-4 z-10 bg-black/80 text-white rounded-full p-3 hover:bg-black transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+              aria-label="Close"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <div className="relative w-full h-full flex items-center justify-center">
+              <img
+                src={selectedImage.src}
+                alt={selectedImage.alt}
+                className="max-w-full max-h-full object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
