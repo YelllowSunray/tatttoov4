@@ -94,7 +94,14 @@ export default function Home() {
                     >
                       Gallery
                     </button>
-                    <button
+                    <Link
+                      href="/about"
+                      className="px-4 py-2.5 text-xs font-medium transition-all duration-200 uppercase tracking-[0.1em] min-h-[44px] flex items-center text-black/40 hover:text-black/60"
+                    >
+                      About Us
+                    </Link>
+                    {/* Temporarily hidden - Top 5 Artists button */}
+                    {/* <button
                       onClick={() => setActiveTab('top-artists')}
                       className={`px-4 py-2.5 text-xs font-medium transition-all duration-200 uppercase tracking-[0.1em] min-h-[44px] ${
                         activeTab === 'top-artists'
@@ -103,13 +110,14 @@ export default function Home() {
                       }`}
                     >
                       Top 5 Artists
-                    </button>
-                    <Link
+                    </button> */}
+                    {/* Temporarily hidden - Shops link */}
+                    {/* <Link
                       href="/shops"
                       className="px-4 py-2.5 text-xs font-medium transition-all duration-200 uppercase tracking-[0.1em] min-h-[44px] flex items-center text-black/40 hover:text-black/60"
                     >
                       Shops
-                    </Link>
+                    </Link> */}
                   </nav>
                 </>
               )}
@@ -173,7 +181,7 @@ export default function Home() {
       <footer className="border-t border-black bg-white">
         <div className="container mx-auto px-4 sm:px-6 py-12 sm:py-16 text-center">
           <p className="text-xs text-black/30 uppercase tracking-[0.15em]">
-            Discover tattoo artists in the Netherlands
+            Tattoo Compass
           </p>
         </div>
       </footer>

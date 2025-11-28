@@ -104,7 +104,7 @@ export default function StudioPage() {
         <div className="container mx-auto px-4 sm:px-6 py-8 sm:py-12 text-center">
           <p className="text-xs text-black/40 uppercase tracking-wider">
             <Link href="/" className="hover:text-black transition-colors">
-              Discover tattoo artists in the Netherlands
+              Tattoo Compass
             </Link>
           </p>
         </div>

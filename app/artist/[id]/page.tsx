@@ -243,7 +243,7 @@ export default function ArtistProfilePage() {
       <footer className="border-t border-black bg-white">
         <div className="container mx-auto px-4 sm:px-6 py-12 sm:py-16 text-center">
           <p className="text-xs text-black/30 uppercase tracking-[0.15em]">
-            Discover tattoo artists in the Netherlands
+            Tattoo Compass
           </p>
         </div>
       </footer>
