@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { AuthModal } from '@/components/AuthModal';
 import { ArtistDashboard } from '@/components/ArtistDashboard';
 import Link from 'next/link';
+import { initiateCheckout } from '@/lib/stripe-checkout';
 
 export default function StudioPage() {
   const { user, loading, signOut } = useAuth();
@@ -48,10 +49,16 @@ export default function StudioPage() {
               Sign in to upload and manage your tattoos.
             </p>
             <button
-              onClick={() => setShowAuthModal(true)}
+              onClick={async () => {
+                try {
+                  await initiateCheckout(user?.uid, user?.email || undefined);
+                } catch (error) {
+                  console.error('Checkout failed:', error);
+                }
+              }}
               className="rounded-full bg-black px-6 sm:px-8 py-3 sm:py-4 text-xs font-medium text-white transition-all hover:bg-black/90 active:bg-black/80 tracking-wide uppercase min-h-[44px] touch-manipulation"
             >
-              Sign In
+              Buy In
             </button>
           </div>
         </main>

@@ -252,6 +252,100 @@ export async function deleteFilterSet(userId: string, filterSetId: string): Prom
   }
 }
 
+// ===== EMAIL-BASED FUNCTIONS (for users without accounts) =====
+
+// Get user preferences by email
+export async function getUserPreferencesByEmail(email: string): Promise<UserPreferences | null> {
+  try {
+    // Use email as document ID (normalize to lowercase for consistency)
+    const emailId = `email_${email.toLowerCase().trim()}`;
+    console.log('Fetching preferences for email ID:', emailId);
+    const docRef = doc(db, USER_PREFERENCES_COLLECTION, emailId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data() as UserPreferences;
+      console.log('Found preferences in Firebase:', data);
+      return data;
+    } else {
+      console.log('No document found for email ID:', emailId);
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting user preferences by email:', error);
+    throw error;
+  }
+}
+
+// Add a new filter set to user preferences by email
+export async function addFilterSetByEmail(email: string, filterSet: Omit<FilterSet, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
+  try {
+    const emailId = `email_${email.toLowerCase().trim()}`;
+    console.log('Saving filter set for email ID:', emailId);
+    const docRef = doc(db, USER_PREFERENCES_COLLECTION, emailId);
+    const docSnap = await getDoc(docRef);
+    
+    // Generate a unique ID
+    const filterSetId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const newFilterSet: FilterSet = {
+      ...filterSet,
+      id: filterSetId,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    
+    console.log('New filter set to save:', newFilterSet);
+    
+    if (docSnap.exists()) {
+      console.log('Document exists, updating...');
+      const currentData = docSnap.data() as UserPreferences;
+      const updatedFilterSets = [...(currentData.filterSets || []), newFilterSet];
+      await updateDoc(docRef, {
+        filterSets: updatedFilterSets,
+        email: email.toLowerCase().trim(), // Ensure email field is preserved on updates
+        updatedAt: serverTimestamp(),
+      });
+      console.log('Document updated successfully');
+    } else {
+      console.log('Document does not exist, creating new...');
+      await setDoc(docRef, {
+        filterSets: [newFilterSet],
+        email: email.toLowerCase().trim(), // Store email for reference
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      console.log('Document created successfully');
+    }
+    
+    return filterSetId;
+  } catch (error) {
+    console.error('Error adding filter set by email:', error);
+    throw error;
+  }
+}
+
+// Save user preferences by email
+export async function saveUserPreferencesByEmail(email: string, preferences: UserPreferences): Promise<void> {
+  const emailId = `email_${email.toLowerCase().trim()}`;
+  const docRef = doc(db, USER_PREFERENCES_COLLECTION, emailId);
+  const docSnap = await getDoc(docRef);
+  
+  if (docSnap.exists()) {
+    // Update existing preferences
+    await updateDoc(docRef, {
+      ...preferences,
+      updatedAt: serverTimestamp(),
+    });
+  } else {
+    // Create new preferences
+    await setDoc(docRef, {
+      ...preferences,
+      email: email.toLowerCase().trim(), // Store email for reference
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  }
+}
+
 // Save a generated tattoo
 export interface GeneratedTattoo {
   id: string;

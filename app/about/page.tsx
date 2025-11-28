@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { AuthModal } from '@/components/AuthModal';
 import { useState } from 'react';
+import { initiateCheckout } from '@/lib/stripe-checkout';
 
 export default function AboutPage() {
   const { user, loading, signOut } = useAuth();
@@ -41,13 +42,25 @@ export default function AboutPage() {
             <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
               {user && (
                 <>
-                  <nav className="flex gap-0.5 border-b border-black/10 sm:border-0 pb-2 sm:pb-0">
-                    <Link
-                      href="/"
-                      className="px-4 py-2.5 text-xs font-medium transition-all duration-200 uppercase tracking-[0.1em] min-h-[44px] flex items-center text-black/40 hover:text-black/60"
-                    >
-                      Gallery
-                    </Link>
+                  <nav className="flex gap-0.5 border-b border-black/10 sm:border-0 pb-2 sm:pb-0 relative">
+                    <div className="relative group">
+                      <button
+                        className="px-4 py-2.5 text-xs font-medium transition-all duration-200 uppercase tracking-[0.1em] min-h-[44px] flex items-center gap-1 text-black/40 hover:text-black/60"
+                      >
+                        Discover
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      <div className="absolute top-full left-0 mt-1 bg-white border border-black/10 shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 min-w-[160px]">
+                        <Link
+                          href="/"
+                          className="block px-4 py-2.5 text-xs font-medium text-black/60 hover:text-black hover:bg-black/5 uppercase tracking-[0.1em] transition-colors"
+                        >
+                          Gallery
+                        </Link>
+                      </div>
+                    </div>
                     <Link
                       href="/about"
                       className="px-4 py-2.5 text-xs font-medium transition-all duration-200 uppercase tracking-[0.1em] min-h-[44px] flex items-center text-black border-b-2 border-black"
@@ -83,10 +96,16 @@ export default function AboutPage() {
                   </>
                 ) : (
                   <button
-                    onClick={() => setShowAuthModal(true)}
+                    onClick={async () => {
+                      try {
+                        await initiateCheckout(undefined, undefined);
+                      } catch (error) {
+                        console.error('Checkout failed:', error);
+                      }
+                    }}
                     className="rounded-full bg-black px-5 py-2.5 text-xs font-medium text-white transition-all duration-200 hover:bg-black/90 active:bg-black/95 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation"
                   >
-                    Sign In
+                    Buy In
                   </button>
                 )}
               </div>
@@ -113,9 +132,9 @@ export default function AboutPage() {
               </p>
               <p className="text-base sm:text-lg text-black/70 leading-relaxed font-light">
                 Tattoo Discovery bridges the gap between inspiration and realization, offering both 
-                carefully curated ready-made designs and bespoke creations crafted by master artists. 
-                We guide you through every step with transparency, expertise, and unwavering commitment 
-                to artistic excellence.
+                carefully curated ready-made designs (€500 - €2,000) and bespoke creations crafted 
+                by master artists (€50 - €100,000). We guide you through every step with transparency, 
+                expertise, and unwavering commitment to artistic excellence.
               </p>
             </div>
           </div>
@@ -201,10 +220,11 @@ export default function AboutPage() {
                     </h3>
                     <p className="text-sm sm:text-base text-white/80 leading-relaxed font-light">
                       Begin with our comprehensive consultation process. We'll discuss your vision, 
-                      preferences, style interests, placement ideas, and budget. This initial conversation 
-                      helps us understand what you're looking for and guides you toward the path that 
-                      best suits your needs—whether that's exploring our curated gallery of ready-made 
-                      designs or embarking on a custom creation journey.
+                      preferences, style interests, placement ideas, and budget. Ready-made designs 
+                      range from €500 to €2,000, while custom creations span from €50 to €100,000. 
+                      This initial conversation helps us understand what you're looking for and guides 
+                      you toward the path that best suits your needs—whether that's exploring our 
+                      curated gallery of ready-made designs or embarking on a custom creation journey.
                     </p>
                   </div>
                 </div>
@@ -294,7 +314,8 @@ export default function AboutPage() {
                 We work exclusively with master tattoo artists who have demonstrated exceptional 
                 skill, artistic vision, and professional integrity. Our rigorous selection process 
                 ensures that every artist in our network meets the highest standards of technical 
-                ability, creativity, and client care.
+                ability, creativity, and client care. Whether creating ready-made designs (€500 - €2,000) 
+                or custom masterpieces (€50 - €100,000), our artists deliver exceptional quality.
               </p>
               <div className="grid md:grid-cols-3 gap-8 pt-8">
                 <div className="space-y-4 text-center">

@@ -676,7 +676,7 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
 
         <div className="mb-6">
           <label htmlFor="subjectMatter" className="block text-sm font-medium text-black/80 mb-2">
-            Subject Matter *
+            Subject Matter (be sure to specify which body part you wish to be draped in color) *
           </label>
           <textarea
             id="subjectMatter"
@@ -718,13 +718,6 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 text-sm">
             {error}
-          </div>
-        )}
-
-        {/* Debug info - remove in production */}
-        {process.env.NODE_ENV === 'development' && generatedImage && (
-          <div className="mb-4 p-2 bg-blue-50 border border-blue-200 text-blue-700 text-xs">
-            <strong>Debug:</strong> Image URL set ({generatedImage.startsWith('blob:') ? 'Blob' : 'Data'} URL, length: {generatedImage.length})
           </div>
         )}
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getUserPreferences, deleteFilterSet, getUserGeneratedTattoos, GeneratedTattoo } from '@/lib/firestore';
+import { getUserPreferences, getUserPreferencesByEmail, deleteFilterSet, getUserGeneratedTattoos, GeneratedTattoo } from '@/lib/firestore';
 import { FilterSet, UserPreferences } from '@/types';
 import { FilterOptions } from './FilterBar';
 import { GenerateTattooModal } from './GenerateTattooModal';
@@ -58,11 +58,115 @@ export function ProfileModal({ onClose, onApplyFilters, showWelcomeMessage = fal
           setLoading(false);
         }
       } else {
-        setLoading(false);
+        // For users without account but who have paid, load from Firebase using email
+        try {
+          // Get email from payment
+          const paymentEmail = typeof window !== 'undefined' 
+            ? (sessionStorage.getItem('payment_email') || sessionStorage.getItem('verified_payment_email'))
+            : null;
+          
+          if (paymentEmail) {
+            console.log('Loading preferences for email:', paymentEmail);
+            // Try to load from Firebase first
+            try {
+              const preferences = await getUserPreferencesByEmail(paymentEmail);
+              console.log('Firebase preferences loaded:', preferences);
+              if (preferences && preferences.filterSets && preferences.filterSets.length > 0) {
+                console.log('Setting filter sets from Firebase:', preferences.filterSets);
+                setFilterSets(preferences.filterSets);
+              } else {
+                console.log('No Firebase data found, checking localStorage...');
+                // Fallback to localStorage if Firebase doesn't have data yet
+                const storedPreferences = localStorage.getItem('tattooPreferences');
+                if (storedPreferences) {
+                  const prefs = JSON.parse(storedPreferences);
+                  // Create a temporary filter set from localStorage
+                  const tempFilterSet: FilterSet = {
+                    id: 'local-' + Date.now(),
+                    name: 'My Consultation',
+                    styles: prefs.styles || [],
+                    bodyParts: prefs.bodyParts || [],
+                    colorPreference: prefs.colorPreference || null,
+                    sizePreference: prefs.sizePreference || null,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                  };
+                  console.log('Setting filter sets from localStorage:', tempFilterSet);
+                  setFilterSets([tempFilterSet]);
+                } else {
+                  console.log('No data found in Firebase or localStorage');
+                }
+              }
+            } catch (firebaseError) {
+              console.error('Error loading from Firebase:', firebaseError);
+              // Fallback to localStorage on Firebase error
+              const storedPreferences = localStorage.getItem('tattooPreferences');
+              if (storedPreferences) {
+                const prefs = JSON.parse(storedPreferences);
+                const tempFilterSet: FilterSet = {
+                  id: 'local-' + Date.now(),
+                  name: 'My Consultation',
+                  styles: prefs.styles || [],
+                  bodyParts: prefs.bodyParts || [],
+                  colorPreference: prefs.colorPreference || null,
+                  sizePreference: prefs.sizePreference || null,
+                  createdAt: Date.now(),
+                  updatedAt: Date.now(),
+                };
+                setFilterSets([tempFilterSet]);
+              }
+            }
+          } else {
+            console.log('No payment email found in sessionStorage');
+            // No email found, try localStorage as last resort
+            const storedPreferences = localStorage.getItem('tattooPreferences');
+            if (storedPreferences) {
+              const prefs = JSON.parse(storedPreferences);
+              // Create a temporary filter set from localStorage
+              const tempFilterSet: FilterSet = {
+                id: 'local-' + Date.now(),
+                name: 'My Consultation',
+                styles: prefs.styles || [],
+                bodyParts: prefs.bodyParts || [],
+                colorPreference: prefs.colorPreference || null,
+                sizePreference: prefs.sizePreference || null,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              };
+              setFilterSets([tempFilterSet]);
+            }
+          }
+        } catch (err) {
+          console.error('Error loading preferences:', err);
+          // Fallback to localStorage on error
+          try {
+            const storedPreferences = localStorage.getItem('tattooPreferences');
+            if (storedPreferences) {
+              const prefs = JSON.parse(storedPreferences);
+              const tempFilterSet: FilterSet = {
+                id: 'local-' + Date.now(),
+                name: 'My Consultation',
+                styles: prefs.styles || [],
+                bodyParts: prefs.bodyParts || [],
+                colorPreference: prefs.colorPreference || null,
+                sizePreference: prefs.sizePreference || null,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              };
+              setFilterSets([tempFilterSet]);
+            }
+          } catch (localErr) {
+            console.error('Error loading localStorage preferences:', localErr);
+          }
+        } finally {
+          setLoading(false);
+        }
       }
     };
     loadData();
   }, [user]);
+
+  // Removed auto-open AI Generator - user should manually click to generate
 
   // Prevent body scroll when large image modal is open and scroll to top
   useEffect(() => {

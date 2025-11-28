@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Tattoo, FilterSet } from '@/types';
-import { getTattoos, addFilterSet } from '@/lib/firestore';
+import { getTattoos, addFilterSet, addFilterSetByEmail } from '@/lib/firestore';
 import { useAuth } from '@/contexts/AuthContext';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -163,19 +163,61 @@ export function BeginnersQuestionnaire() {
 
     setSaving(true);
     try {
+      // Save to Firebase - use userId if logged in, otherwise use email from payment
       if (user?.uid) {
         await addFilterSet(user.uid, {
           name: filterName.trim(),
           ...preferences,
         });
+      } else if (typeof window !== 'undefined') {
+        // User not logged in - try to get email from payment
+        const paymentEmail = sessionStorage.getItem('payment_email') || sessionStorage.getItem('verified_payment_email');
+        console.log('Saving consultation data for email:', paymentEmail);
+        if (paymentEmail) {
+          try {
+            const filterSetId = await addFilterSetByEmail(paymentEmail, {
+              name: filterName.trim(),
+              ...preferences,
+            });
+            console.log('Successfully saved to Firebase with filterSetId:', filterSetId);
+          } catch (firebaseError) {
+            console.error('Error saving to Firebase:', firebaseError);
+            // Still continue with localStorage fallback
+          }
+        } else {
+          console.warn('No payment email found - data will only be saved to localStorage');
+        }
       }
       
+      // Keep localStorage as backup (for immediate redirect)
       localStorage.setItem('tattooPreferences', JSON.stringify(preferences));
-      // Redirect to home and open profile modal to generate tattoos
+      
+      // Ensure payment status is preserved for paid users without accounts
+      if (typeof window !== 'undefined' && !user) {
+        const hasPaid = sessionStorage.getItem('has_paid') === 'true';
+        const emailVerified = sessionStorage.getItem('verified_payment_email') !== null;
+        if (hasPaid && emailVerified) {
+          // Ensure payment flags are set before redirect
+          sessionStorage.setItem('has_paid', 'true');
+        }
+      }
+      
+      // Redirect to homepage and open profile modal to generate tattoos
       router.push('/?openProfile=generate');
     } catch (err) {
       console.error('Error saving preferences:', err);
+      // Fallback to localStorage if Firebase save fails
       localStorage.setItem('tattooPreferences', JSON.stringify(preferences));
+      
+      // Ensure payment status is preserved
+      if (typeof window !== 'undefined' && !user) {
+        const hasPaid = sessionStorage.getItem('has_paid') === 'true';
+        const emailVerified = sessionStorage.getItem('verified_payment_email') !== null;
+        if (hasPaid && emailVerified) {
+          sessionStorage.setItem('has_paid', 'true');
+        }
+      }
+      
       router.push('/?openProfile=generate');
     } finally {
       setSaving(false);
@@ -247,12 +289,6 @@ export function BeginnersQuestionnaire() {
                 Understand styles, explore ideas, prepare calmly
               </p>
             </div>
-            <Link
-              href="/"
-              className="text-xs text-black/40 hover:text-black transition-colors duration-200 uppercase tracking-[0.1em]"
-            >
-              Skip
-            </Link>
           </div>
         </div>
       </header>

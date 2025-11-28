@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { AuthModal } from '@/components/AuthModal';
 import { AdminArtistManager } from '@/components/AdminArtistManager';
 import Link from 'next/link';
+import { initiateCheckout } from '@/lib/stripe-checkout';
 
 // Configure admin access by setting NEXT_PUBLIC_ADMIN_EMAILS
 // to a comma-separated list of allowed email addresses.
@@ -68,10 +69,16 @@ export default function AdminPage() {
               Sign in with an admin account to manage tattoo parlors and upload tattoos on their behalf.
             </p>
             <button
-              onClick={() => setShowAuthModal(true)}
+              onClick={async () => {
+                try {
+                  await initiateCheckout(user?.uid, user?.email || undefined);
+                } catch (error) {
+                  console.error('Checkout failed:', error);
+                }
+              }}
               className="rounded-full bg-black px-6 sm:px-8 py-3 sm:py-4 text-xs font-medium text-white transition-all hover:bg-black/90 active:bg-black/80 tracking-wide uppercase min-h-[44px] touch-manipulation"
             >
-              Sign In
+              Buy In
             </button>
           </div>
         </main>

@@ -135,7 +135,7 @@ export function AuthModal({ onClose }: AuthModalProps) {
             disabled={loading}
             className="w-full rounded-full bg-black px-6 py-3.5 text-xs font-medium text-white transition-all duration-200 hover:bg-black/90 active:bg-black/95 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-[0.1em] min-h-[44px] touch-manipulation"
           >
-            {loading ? 'Please wait...' : isSignUp ? 'Sign Up' : 'Sign In'}
+            {loading ? 'Please wait...' : isSignUp ? 'Sign Up' : 'Buy In'}
           </button>
         </form>
 
@@ -159,3 +159,4 @@ export function AuthModal({ onClose }: AuthModalProps) {
   );
 }
 
+export default AuthModal;

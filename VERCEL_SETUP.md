@@ -54,6 +54,13 @@ HUGGINGFACE_API_KEY=hf_your_token_here
 RESEND_API_KEY=re_your_api_key_here
 ```
 
+**For Stripe Payments (Buy In feature):**
+```
+STRIPE_SECRET_KEY=sk_test_your_secret_key_here
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_your_publishable_key_here
+NEXT_PUBLIC_BASE_URL=https://yourdomain.com
+```
+
 ## Step 3: Important Notes
 
 ### GOOGLE_CLOUD_CREDENTIALS Format
