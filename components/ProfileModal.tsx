@@ -64,9 +64,12 @@ export function ProfileModal({ onClose, onApplyFilters, showWelcomeMessage = fal
     loadData();
   }, [user]);
 
-  // Prevent body scroll when large image modal is open
+  // Prevent body scroll when large image modal is open and scroll to top
   useEffect(() => {
     if (selectedTattoo) {
+      // Scroll window to top when modal opens
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      
       // Store current scroll position
       const scrollY = window.scrollY;
       // Prevent body scroll
@@ -74,7 +77,13 @@ export function ProfileModal({ onClose, onApplyFilters, showWelcomeMessage = fal
       document.body.style.top = `-${scrollY}px`;
       document.body.style.width = '100%';
       
+      // Also try scrolling after a short delay to ensure it sticks
+      const timer = setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 100);
+      
       return () => {
+        clearTimeout(timer);
         // Restore scroll position when modal closes
         document.body.style.position = '';
         document.body.style.top = '';
@@ -379,8 +388,9 @@ export function ProfileModal({ onClose, onApplyFilters, showWelcomeMessage = fal
       {/* Large Image Modal */}
       {selectedTattoo && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 overflow-y-auto"
           onClick={() => setSelectedTattoo(null)}
+          style={{ top: 0, left: 0, right: 0, bottom: 0 }}
         >
           <div
             className="relative w-full h-full max-w-6xl max-h-[90vh] flex items-center justify-center"
