@@ -8,6 +8,7 @@ import {
   deleteDoc,
   query,
   where,
+  orderBy,
   serverTimestamp,
   increment,
 } from 'firebase/firestore';
@@ -292,9 +293,13 @@ export async function saveGeneratedTattoo(
   return docRef.id;
 }
 
-// Get all generated tattoos for a user
+// Get all generated tattoos for a user, ordered by newest first
 export async function getUserGeneratedTattoos(userId: string): Promise<GeneratedTattoo[]> {
-  const q = query(collection(db, GENERATED_TATTOOS_COLLECTION), where('userId', '==', userId));
+  const q = query(
+    collection(db, GENERATED_TATTOOS_COLLECTION),
+    where('userId', '==', userId),
+    orderBy('createdAt', 'desc')
+  );
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as GeneratedTattoo));
 }

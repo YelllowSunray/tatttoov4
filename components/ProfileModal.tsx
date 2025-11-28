@@ -35,9 +35,23 @@ export function ProfileModal({ onClose, onApplyFilters, showWelcomeMessage = fal
             setFilterSets(preferences.filterSets);
           }
           
-          // Load generated tattoos
+          // Load generated tattoos (already ordered by newest first from Firestore)
           const tattoos = await getUserGeneratedTattoos(user.uid);
-          setGeneratedTattoos(tattoos);
+          // Additional client-side sort as fallback (newest first)
+          const sortedTattoos = tattoos.sort((a, b) => {
+            // Handle Firestore Timestamp objects or numbers
+            const getTimestamp = (ts: any): number => {
+              if (!ts) return 0;
+              if (typeof ts === 'number') return ts;
+              if (ts.toMillis) return ts.toMillis(); // Firestore Timestamp
+              if (ts.seconds) return ts.seconds * 1000; // Firestore Timestamp (alternative format)
+              return 0;
+            };
+            const aTime = getTimestamp(a.createdAt) || getTimestamp(a.updatedAt) || 0;
+            const bTime = getTimestamp(b.createdAt) || getTimestamp(b.updatedAt) || 0;
+            return bTime - aTime; // Descending order (newest first)
+          });
+          setGeneratedTattoos(sortedTattoos);
         } catch (err) {
           console.error('Error loading data:', err);
         } finally {
