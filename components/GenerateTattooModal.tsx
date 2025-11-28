@@ -31,7 +31,7 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [preferredService, setPreferredService] = useState<'replicate' | 'vertex' | 'gemini' | 'auto'>('vertex');
-  const [generateAllStyles, setGenerateAllStyles] = useState(false);
+  const [generateAllStyles, setGenerateAllStyles] = useState(true); // Mandatory - always enabled
   const [allStyleImages, setAllStyleImages] = useState<Array<{ style: string; image: string }>>([]);
   const [selectedStyleImage, setSelectedStyleImage] = useState<{ style: string; image: string; index: number } | null>(null);
   const [savedStyleImages, setSavedStyleImages] = useState<Set<number>>(new Set());
@@ -409,7 +409,7 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
         referenceImage: referenceImageBase64,
         referenceImageMimeType: referenceImageMimeType,
         preferredService: preferredService !== 'auto' ? preferredService : undefined,
-        generateAllStyles: generateAllStyles && !referenceImageBase64, // Only if no reference image
+        generateAllStyles: !referenceImageBase64, // Always generate all styles when no reference image (mandatory)
       };
 
       console.log('📤 Sending generation request:', {
@@ -693,26 +693,25 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
 
 
 
-        {/* Generate All Styles Option */}
+        {/* Generate All Styles Option - Mandatory */}
         {!referenceImage && (
           <div className="mb-6">
-            <label className="flex items-center gap-3 cursor-pointer">
+            <div className="flex items-center gap-3">
               <input
                 type="checkbox"
-                checked={generateAllStyles}
-                onChange={(e) => setGenerateAllStyles(e.target.checked)}
-                disabled={loading}
-                className="w-5 h-5 border-black/20 rounded text-black focus:ring-2 focus:ring-black/20"
+                checked={true}
+                disabled={true}
+                className="w-5 h-5 border-black/20 rounded text-black focus:ring-2 focus:ring-black/20 cursor-not-allowed"
               />
               <div>
                 <span className="block text-sm font-medium text-black/80">
                   Generate in All Styles
                 </span>
                 <span className="text-xs text-black/50">
-                  It's recommended to select all 15 styles, rendering will take 60 seconds.
+                  Rendering will take 120 seconds.
                 </span>
               </div>
-            </label>
+            </div>
           </div>
         )}
 

@@ -119,7 +119,7 @@ export default function Home() {
                     href="/beginners"
                     className="text-xs text-black/40 hover:text-black transition-colors duration-200 uppercase tracking-[0.1em] min-h-[44px] flex items-center"
                   >
-                    For beginners
+                    Your Consultation
                   </Link>
                 )}
                 {/* Temporarily hidden - For artists link */}

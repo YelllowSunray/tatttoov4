@@ -209,18 +209,15 @@ export function ProfileModal({ onClose, onApplyFilters, showWelcomeMessage = fal
           <>
             {filterSets.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-sm text-black/50 tracking-wide mb-4">
-              No saved filter sets yet
-            </p>
             <p className="text-xs text-black/40 tracking-wide mb-6">
-              We recommend going to "For Beginners" to create your first filter set
+              To make your generated tattoos, please go to your consultation
             </p>
             <Link
               href="/beginners"
               onClick={onClose}
               className="inline-block rounded-full bg-black px-6 py-3 text-xs font-medium text-white transition-all duration-200 hover:bg-black/90 active:bg-black/95 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation"
             >
-              Go to For Beginners
+              Go to your consultation
             </Link>
           </div>
         ) : (
