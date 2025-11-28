@@ -194,24 +194,154 @@ export async function POST(request: NextRequest) {
 
     // Define service names for tracking which model was used
     const serviceNames = referenceImage ? [
+      'Vertex AI Imagen (GCP)', // Vertex AI is now default
       'Gemini (Google AI)', // Gemini for image-to-image via Imagen
       'Replicate Stable Diffusion XL', // Replicate has proven image-to-image support
-      'Vertex AI Imagen (GCP)', // Vertex AI may not support image-to-image
       'Hugging Face Stable Diffusion',
       'Hugging Face Stable Diffusion (Fallback)',
     ] : [
+      'Vertex AI Imagen (GCP)', // Vertex AI is now default
       'Gemini (Google AI)',
       'Replicate Stable Diffusion XL',
-      'Vertex AI Imagen (GCP)',
       'Hugging Face Stable Diffusion',
       'Hugging Face Stable Diffusion (Fallback)',
     ];
 
     // Try multiple image generation services
-    // If reference image is provided, prioritize Gemini (works well for selfies to tattoos)
-    // Then Replicate, then Vertex AI
+    // Vertex AI is now the default service (prioritized first)
+    // Then Gemini, then Replicate
     const imageServices = referenceImage ? [
-      // Service 1: Gemini Nano Banana (Gemini 2.5 Flash Image) - excellent for portrait/selfie to tattoo
+      // Service 1: Vertex AI Imagen (default - prioritized first)
+      async () => {
+        const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
+        const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
+        const credentialsJson = process.env.GOOGLE_CLOUD_CREDENTIALS;
+
+        if (!projectId || !credentialsJson) {
+          throw new Error('SKIP'); // Skip silently if not configured
+        }
+
+        try {
+          // Parse credentials JSON
+          let credentials;
+          try {
+            credentials = JSON.parse(credentialsJson);
+          } catch (parseError) {
+            throw new Error('Invalid credentials JSON format. Make sure GOOGLE_CLOUD_CREDENTIALS is valid JSON.');
+          }
+
+          console.log(`🎨 Attempting Vertex AI Imagen (default) for image-to-image generation with project ${projectId}...`);
+
+          // Get access token using service account credentials
+          const auth = new GoogleAuth({
+            credentials: credentials,
+            scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+          });
+
+          const client = await auth.getClient();
+          const accessToken = await client.getAccessToken();
+
+          if (!accessToken.token) {
+            throw new Error('Failed to get access token from Google Cloud credentials');
+          }
+
+          // Build optimized prompt for portrait-to-tattoo conversion
+          const portraitTattooPrompt = `Transform this portrait into a ${styleText} tattoo design while preserving the exact facial features and likeness.
+
+Style: ${styleText} tattoo style
+${colorPreference === 'color' ? 'Color: Colorful tattoo' : 'Color: Black and white tattoo, monochrome'}
+${sizePreference && sizePreference !== 'all' ? `Size: ${sizePreference} tattoo design` : ''}
+${bodyParts && bodyParts.length > 0 ? `Body placement: Suitable for ${bodyParts[0]} placement` : ''}
+
+Requirements:
+- Preserve exact facial features and likeness from the reference image
+- Maintain the person's face structure, eyes, nose, mouth in tattoo style
+- Convert to ${styleText} tattoo art style while keeping the person recognizable
+- Professional tattoo design quality
+- Clean line art suitable for tattooing
+- The tattoo should look like the person in the reference image`;
+
+          // Use Vertex AI Imagen API
+          const apiEndpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagegeneration@006:predict`;
+
+          const instance: any = {
+            prompt: portraitTattooPrompt,
+            baseImage: {
+              bytesBase64Encoded: referenceImage,
+              mimeType: referenceImageMimeType || 'image/png',
+            },
+          };
+
+          const requestBody = {
+            instances: [instance],
+            parameters: {
+              sampleCount: 1,
+              aspectRatio: '1:1',
+              negativePrompt: 'blurry, low quality, distorted, watermark, different person, different face, unrecognizable',
+              guidanceScale: 4, // Medium guidance to balance style transformation with likeness preservation
+            },
+          };
+
+          console.log('📤 Sending request to Vertex AI Imagen (default):', {
+            hasBaseImage: !!instance.baseImage,
+            promptLength: portraitTattooPrompt.length,
+            guidanceScale: requestBody.parameters.guidanceScale,
+          });
+
+          const response = await fetch(apiEndpoint, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken.token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            let errorData;
+            try {
+              errorData = JSON.parse(errorText);
+            } catch {
+              errorData = { error: errorText.substring(0, 200) };
+            }
+            throw new Error(`Vertex AI Imagen API error: ${errorData.error?.message || errorData.error || errorText.substring(0, 200)}`);
+          }
+
+          const data = await response.json();
+
+          if (!data.predictions || data.predictions.length === 0) {
+            throw new Error('Vertex AI Imagen returned no predictions');
+          }
+
+          const prediction = data.predictions[0];
+          let base64Image: string | undefined;
+
+          if (prediction.bytesBase64Encoded) {
+            base64Image = prediction.bytesBase64Encoded;
+          } else if (prediction.generatedImages && Array.isArray(prediction.generatedImages) && prediction.generatedImages.length > 0) {
+            const imageData = prediction.generatedImages[0];
+            if (imageData.bytesBase64Encoded) {
+              base64Image = imageData.bytesBase64Encoded;
+            }
+          } else if (prediction.imageBytes) {
+            base64Image = prediction.imageBytes;
+          }
+
+          if (base64Image) {
+            const cleanedBase64 = String(base64Image).replace(/\s/g, '').trim();
+            console.log('✅ Successfully received image from Vertex AI Imagen (default)');
+            return cleanedBase64;
+          }
+
+          throw new Error('Vertex AI Imagen response format not recognized');
+        } catch (err: any) {
+          console.error('Vertex AI Imagen error:', err);
+          throw err;
+        }
+      },
+      
+      // Service 2: Gemini Nano Banana (Gemini 2.5 Flash Image) - excellent for portrait/selfie to tattoo
       async () => {
         const geminiApiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
         const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
@@ -627,200 +757,6 @@ Requirements:
         throw new Error('Replicate prediction timed out');
       },
       
-      // Service 2: Vertex AI Imagen (may not support image-to-image via baseImage)
-      async () => {
-        const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
-        const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
-        const credentialsJson = process.env.GOOGLE_CLOUD_CREDENTIALS;
-
-        if (!projectId || !credentialsJson) {
-          throw new Error('SKIP'); // Skip silently if not configured
-        }
-
-        // Warn if using Vertex AI with reference image (Replicate is better for image-to-image)
-        if (referenceImage) {
-          console.warn('⚠️ WARNING: Using Vertex AI with reference image. Replicate has better image-to-image support.');
-          console.warn('   For best results with reference images, set REPLICATE_API_TOKEN in .env.local');
-        }
-
-        try {
-          // Parse credentials JSON
-          let credentials;
-          try {
-            credentials = JSON.parse(credentialsJson);
-          } catch (parseError) {
-            throw new Error('Invalid credentials JSON format. Make sure GOOGLE_CLOUD_CREDENTIALS is valid JSON.');
-          }
-
-          console.log(`Attempting Vertex AI image generation with project ${projectId}...`);
-
-          // Get access token using service account credentials
-          const auth = new GoogleAuth({
-            credentials: credentials,
-            scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-          });
-
-          const client = await auth.getClient();
-          const accessToken = await client.getAccessToken();
-
-          if (!accessToken.token) {
-            throw new Error('Failed to get access token from Google Cloud credentials');
-          }
-
-          // Vertex AI Imagen REST API endpoint
-          const apiEndpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagegeneration@006:predict`;
-
-          // Prepare instance with prompt and optional reference image
-          const instance: any = {
-            prompt: enhancedPrompt,
-          };
-
-          // Add reference image if provided (image-to-image)
-          if (referenceImage) {
-            const mimeType = referenceImageMimeType || 'image/png';
-            // For imagegeneration@006, use baseImage for image-to-image transformation
-            // The baseImage is the starting image that will be transformed according to the prompt
-            instance.baseImage = {
-              bytesBase64Encoded: referenceImage,
-              mimeType: mimeType,
-            };
-            console.log('✅ Using reference image for Vertex AI image-to-image generation', {
-              mimeType: mimeType,
-              base64Length: referenceImage.length,
-              estimatedSizeKB: Math.round(referenceImage.length * 3 / 4 / 1024),
-              prompt: enhancedPrompt.substring(0, 150) + '...',
-              method: 'baseImage',
-            });
-          } else {
-            console.log('⚠️ No reference image provided to Vertex AI');
-          }
-
-          const requestBody = {
-            instances: [instance],
-            parameters: {
-              sampleCount: 1,
-              aspectRatio: '1:1',
-              negativePrompt: 'blurry, low quality, distorted, watermark',
-              // Guidance scale - when using baseImage, we want the image to dominate
-              // Very low values (1-3) let the base image have maximum influence
-              // Higher values let the prompt override the image more
-              // Using 1 (minimum) to maximize image preservation
-              guidanceScale: referenceImage ? 1 : 7, // Minimum guidance to preserve base image
-            },
-          };
-          
-          console.log('Vertex AI request body structure:', {
-            hasPrompt: !!instance.prompt,
-            hasBaseImage: !!instance.baseImage,
-            promptLength: instance.prompt?.length || 0,
-            guidanceScale: requestBody.parameters.guidanceScale,
-            aspectRatio: requestBody.parameters.aspectRatio,
-          });
-
-          const response = await fetch(apiEndpoint, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${accessToken.token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody),
-          });
-
-          console.log(`Vertex AI response status: ${response.status}`);
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            let errorData;
-            try {
-              errorData = JSON.parse(errorText);
-            } catch {
-              errorData = { error: errorText.substring(0, 200) };
-            }
-
-            if (response.status === 401 || response.status === 403) {
-              throw new Error('Vertex AI authentication failed. Check your credentials and permissions.');
-            }
-            if (response.status === 404) {
-              throw new Error('Vertex AI model not found. Make sure Imagen API is enabled in your project.');
-            }
-            if (response.status === 429) {
-              throw new Error('Vertex AI quota exceeded. Please check your Google Cloud quotas.');
-            }
-
-            throw new Error(`Vertex AI API error: ${errorData.error?.message || errorData.error || errorText.substring(0, 200)}`);
-          }
-
-          const data = await response.json();
-
-          console.log('Vertex AI response structure:', JSON.stringify(data).substring(0, 1000));
-
-          if (!data.predictions || data.predictions.length === 0) {
-            throw new Error('Vertex AI returned no predictions');
-          }
-
-          const prediction = data.predictions[0];
-          
-          // Vertex AI can return images in different formats
-          let base64Image: string | undefined;
-          
-          // Try different possible response formats
-          if (prediction.bytesBase64Encoded) {
-            base64Image = prediction.bytesBase64Encoded;
-          } else if (prediction.generatedImages && Array.isArray(prediction.generatedImages) && prediction.generatedImages.length > 0) {
-            // Format: { generatedImages: [{ bytesBase64Encoded: "..." }] }
-            const imageData = prediction.generatedImages[0];
-            if (imageData.bytesBase64Encoded) {
-              base64Image = imageData.bytesBase64Encoded;
-            } else if (imageData.imageBytes) {
-              base64Image = imageData.imageBytes;
-            }
-          } else if (prediction.imageBytes) {
-            base64Image = prediction.imageBytes;
-          } else if (prediction.bytes) {
-            base64Image = prediction.bytes;
-          } else if (typeof prediction === 'string') {
-            // Sometimes the prediction itself is the base64 string
-            base64Image = prediction;
-          }
-
-          if (base64Image) {
-            // Clean the base64 string (remove any whitespace/newlines)
-            const cleanedBase64 = String(base64Image).replace(/\s/g, '').trim();
-            
-            if (!cleanedBase64 || cleanedBase64.length === 0) {
-              throw new Error('Vertex AI returned empty image data');
-            }
-            
-            console.log('Successfully received image from Vertex AI, base64 length:', cleanedBase64.length);
-            return cleanedBase64;
-          }
-
-          // Log the prediction structure for debugging
-          console.error('Vertex AI response format not recognized.');
-          console.error('Prediction keys:', Object.keys(prediction));
-          console.error('Full prediction:', JSON.stringify(prediction).substring(0, 1000));
-          throw new Error(`Vertex AI response format not recognized. Prediction keys: ${Object.keys(prediction).join(', ')}`);
-        } catch (err: any) {
-          console.error('Vertex AI error:', err);
-          
-          // Provide helpful error messages
-          if (err.message?.includes('credentials') || err.message?.includes('authentication')) {
-            throw new Error(`Vertex AI credentials error: ${err.message}`);
-          }
-          if (err.message?.includes('permission') || err.message?.includes('403')) {
-            throw new Error('Vertex AI permission denied. Check that your service account has Vertex AI User role.');
-          }
-          if (err.message?.includes('not found') || err.message?.includes('404')) {
-            throw new Error('Vertex AI model not found. Make sure Imagen API is enabled in your project.');
-          }
-          if (err.message?.includes('quota') || err.message?.includes('429')) {
-            throw new Error('Vertex AI quota exceeded. Please check your Google Cloud quotas.');
-          }
-          
-          throw new Error(`Vertex AI error: ${err.message || 'Unknown error'}`);
-        }
-      },
-      
       // Service 2: Replicate API (fallback for image-to-image)
       async () => {
         const replicateApiKey = process.env.REPLICATE_API_TOKEN;
@@ -928,7 +864,151 @@ Requirements:
         throw new Error('Replicate prediction timed out');
       },
     ] : [
-      // Service 1: Replicate API (easier setup, faster for text-to-image)
+      // Service 1: Vertex AI Imagen (default - prioritized first)
+      async () => {
+        const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
+        const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1';
+        const credentialsJson = process.env.GOOGLE_CLOUD_CREDENTIALS;
+
+        if (!projectId || !credentialsJson) {
+          throw new Error('SKIP'); // Skip silently if not configured
+        }
+
+        try {
+          // Parse credentials JSON
+          let credentials;
+          try {
+            credentials = JSON.parse(credentialsJson);
+          } catch (parseError) {
+            throw new Error('Invalid credentials JSON format. Make sure GOOGLE_CLOUD_CREDENTIALS is valid JSON.');
+          }
+
+          console.log(`🎨 Attempting Vertex AI Imagen (default) for text-to-image generation with project ${projectId}...`);
+
+          // Get access token using service account credentials
+          const auth = new GoogleAuth({
+            credentials: credentials,
+            scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+          });
+
+          const client = await auth.getClient();
+          const accessToken = await client.getAccessToken();
+
+          if (!accessToken.token) {
+            throw new Error('Failed to get access token from Google Cloud credentials');
+          }
+
+          // Vertex AI Imagen REST API endpoint
+          const apiEndpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagegeneration@006:predict`;
+
+          // Prepare instance with prompt
+          const instance: any = {
+            prompt: enhancedPrompt,
+          };
+
+          const requestBody = {
+            instances: [instance],
+            parameters: {
+              sampleCount: 1,
+              aspectRatio: '1:1',
+              negativePrompt: 'blurry, low quality, distorted, watermark',
+              guidanceScale: 7,
+            },
+          };
+          
+          console.log('📤 Sending request to Vertex AI Imagen (default):', {
+            hasPrompt: !!instance.prompt,
+            promptLength: instance.prompt?.length || 0,
+            guidanceScale: requestBody.parameters.guidanceScale,
+            aspectRatio: requestBody.parameters.aspectRatio,
+          });
+
+          const response = await fetch(apiEndpoint, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken.token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+          });
+
+          console.log(`Vertex AI response status: ${response.status}`);
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            let errorData;
+            try {
+              errorData = JSON.parse(errorText);
+            } catch {
+              errorData = { error: errorText.substring(0, 200) };
+            }
+            
+            // Provide helpful error messages
+            if (errorData.error?.message?.includes('credentials') || errorData.error?.message?.includes('authentication')) {
+              throw new Error(`Vertex AI credentials error: ${errorData.error.message}`);
+            }
+            if (errorData.error?.message?.includes('permission') || response.status === 403) {
+              throw new Error('Vertex AI permission denied. Check that your service account has Vertex AI User role.');
+            }
+            if (errorData.error?.message?.includes('not found') || response.status === 404) {
+              throw new Error('Vertex AI model not found. Make sure Imagen API is enabled in your project.');
+            }
+            if (errorData.error?.message?.includes('quota') || response.status === 429) {
+              throw new Error('Vertex AI quota exceeded. Please check your Google Cloud quotas.');
+            }
+            
+            throw new Error(`Vertex AI Imagen API error: ${errorData.error?.message || errorData.error || errorText.substring(0, 200)}`);
+          }
+
+          const data = await response.json();
+
+          if (!data.predictions || data.predictions.length === 0) {
+            throw new Error('Vertex AI Imagen returned no predictions');
+          }
+
+          const prediction = data.predictions[0];
+          let base64Image: string | undefined;
+
+          if (prediction.bytesBase64Encoded) {
+            base64Image = prediction.bytesBase64Encoded;
+          } else if (prediction.generatedImages && Array.isArray(prediction.generatedImages) && prediction.generatedImages.length > 0) {
+            const imageData = prediction.generatedImages[0];
+            if (imageData.bytesBase64Encoded) {
+              base64Image = imageData.bytesBase64Encoded;
+            }
+          } else if (prediction.imageBytes) {
+            base64Image = prediction.imageBytes;
+          }
+
+          if (base64Image) {
+            const cleanedBase64 = String(base64Image).replace(/\s/g, '').trim();
+            console.log('✅ Successfully received image from Vertex AI Imagen (default)');
+            return cleanedBase64;
+          }
+
+          throw new Error('Vertex AI Imagen response format not recognized');
+        } catch (err: any) {
+          console.error('Vertex AI Imagen error:', err);
+          
+          // Provide helpful error messages
+          if (err.message?.includes('credentials') || err.message?.includes('authentication')) {
+            throw new Error(`Vertex AI credentials error: ${err.message}`);
+          }
+          if (err.message?.includes('permission') || err.message?.includes('403')) {
+            throw new Error('Vertex AI permission denied. Check that your service account has Vertex AI User role.');
+          }
+          if (err.message?.includes('not found') || err.message?.includes('404')) {
+            throw new Error('Vertex AI model not found. Make sure Imagen API is enabled in your project.');
+          }
+          if (err.message?.includes('quota') || err.message?.includes('429')) {
+            throw new Error('Vertex AI quota exceeded. Please check your Google Cloud quotas.');
+          }
+          
+          throw new Error(`Vertex AI error: ${err.message || 'Unknown error'}`);
+        }
+      },
+      
+      // Service 2: Replicate API (easier setup, faster for text-to-image)
       async () => {
         const replicateApiKey = process.env.REPLICATE_API_TOKEN;
         if (!replicateApiKey) {
@@ -1668,10 +1748,33 @@ Requirements:
                             image: cleanedStyleBase64,
                           });
                           console.log(`✅ Generated ${otherStyle} style successfully`);
+                        } else {
+                          console.log(`⚠️ Failed to generate ${otherStyle} style: No image data in response, skipping...`);
                         }
+                      } else {
+                        console.log(`⚠️ Failed to generate ${otherStyle} style: No predictions in response, skipping...`);
                       }
                     } else {
-                      console.log(`⚠️ Failed to generate ${otherStyle} style, skipping...`);
+                      // Log the actual error response
+                      const errorText = await styleResponse.text();
+                      let errorData;
+                      try {
+                        errorData = JSON.parse(errorText);
+                      } catch {
+                        errorData = { error: errorText.substring(0, 500) };
+                      }
+                      
+                      const errorMessage = errorData.error?.message || errorData.error || errorText.substring(0, 200);
+                      console.error(`⚠️ Failed to generate ${otherStyle} style (status ${styleResponse.status}): ${errorMessage}`);
+                      
+                      // Log specific error types for debugging
+                      if (styleResponse.status === 429) {
+                        console.error(`   → Rate limit/quota exceeded. Please check your Google Cloud quotas.`);
+                      } else if (styleResponse.status === 401 || styleResponse.status === 403) {
+                        console.error(`   → Authentication/authorization error. Check your credentials.`);
+                      } else if (styleResponse.status === 400) {
+                        console.error(`   → Bad request. Check the request format.`);
+                      }
                     }
                   } catch (styleError: any) {
                     console.log(`⚠️ Error generating ${otherStyle} style: ${styleError.message}, skipping...`);
