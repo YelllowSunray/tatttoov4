@@ -3,12 +3,45 @@
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { AuthModal } from '@/components/AuthModal';
-import { useState } from 'react';
+import { ProfileModal } from '@/components/ProfileModal';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { initiateCheckout } from '@/lib/stripe-checkout';
 
 export default function HomePage() {
   const { user, loading, signOut } = useAuth();
+  const searchParams = useSearchParams();
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showWelcomeMessage, setShowWelcomeMessage] = useState(false);
+  const [hasPaid, setHasPaid] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
+
+  useEffect(() => {
+    // Check if user has paid via payment session
+    if (typeof window !== 'undefined') {
+      const paid = sessionStorage.getItem('has_paid') === 'true';
+      const verified = sessionStorage.getItem('verified_payment_email') !== null;
+      setHasPaid(paid);
+      setEmailVerified(verified);
+    }
+  }, []);
+
+  // Open profile modal if coming from consultation
+  useEffect(() => {
+    const shouldOpenProfile = searchParams.get('openProfile') === 'generate';
+    const comingFromConsultation = shouldOpenProfile;
+    
+    // Check if they have localStorage preferences (indicates they completed consultation)
+    const hasConsultationData = typeof window !== 'undefined' && localStorage.getItem('tattooPreferences') !== null;
+    
+    if (shouldOpenProfile && (user || (hasPaid && emailVerified) || (comingFromConsultation && hasConsultationData))) {
+      setShowProfileModal(true);
+      setShowWelcomeMessage(true);
+      // Clean up URL
+      window.history.replaceState({}, '', '/');
+    }
+  }, [user, searchParams, hasPaid, emailVerified]);
 
   if (loading) {
     return (
@@ -664,6 +697,15 @@ export default function HomePage() {
       </footer>
 
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
+      {showProfileModal && (user || (hasPaid && emailVerified)) && (
+        <ProfileModal
+          onClose={() => {
+            setShowProfileModal(false);
+            setShowWelcomeMessage(false);
+          }}
+          showWelcomeMessage={showWelcomeMessage}
+        />
+      )}
     </div>
   );
 }

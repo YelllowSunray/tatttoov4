@@ -1555,24 +1555,24 @@ Requirements:
         console.log('⚠️ User selected Vertex AI but service not found');
       }
     } else {
-      // Auto mode: prioritize Replicate when configured (default behavior)
-      if (hasReplicateToken) {
-        const replicateIndex = imageServices.findIndex((_, idx) => {
+      // Auto mode: prioritize Vertex AI when configured (default behavior)
+      if (hasVertexAIConfigured) {
+        const vertexIndex = imageServices.findIndex((_, idx) => {
           const serviceName = serviceNames[idx];
-          return serviceName && serviceName.includes('Replicate');
+          return serviceName && serviceName.includes('Vertex AI');
         });
         
-        if (replicateIndex > 0) {
-          const replicateService = imageServices.splice(replicateIndex, 1)[0];
-          const replicateServiceName = serviceNames.splice(replicateIndex, 1)[0];
-          imageServices.unshift(replicateService);
-          serviceNames.unshift(replicateServiceName);
-          console.log('✅ Auto mode: Replicate API token detected - moved to first position');
-        } else if (replicateIndex === 0) {
-          console.log('✅ Auto mode: Replicate API token detected - already first');
+        if (vertexIndex > 0) {
+          const vertexService = imageServices.splice(vertexIndex, 1)[0];
+          const vertexServiceName = serviceNames.splice(vertexIndex, 1)[0];
+          imageServices.unshift(vertexService);
+          serviceNames.unshift(vertexServiceName);
+          console.log('✅ Auto mode: Vertex AI configured - moved to first position (default)');
+        } else if (vertexIndex === 0) {
+          console.log('✅ Auto mode: Vertex AI configured - already first (default)');
         }
       } else {
-        console.log('⚠️ Auto mode: Replicate API token NOT found - will use fallback services');
+        console.log('⚠️ Auto mode: Vertex AI not configured - will use fallback services');
       }
     }
 

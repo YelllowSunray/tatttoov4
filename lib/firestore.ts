@@ -23,6 +23,7 @@ const LIKES_COLLECTION = 'likes';
 const INQUIRIES_COLLECTION = 'inquiries';
 const ARTIST_STATS_COLLECTION = 'artist_stats';
 const USER_PREFERENCES_COLLECTION = 'user_preferences';
+const GENERATION_USAGE_COLLECTION = 'generation_usage';
 
 // Get all artists
 export async function getArtists(): Promise<Artist[]> {
@@ -346,6 +347,32 @@ export async function saveUserPreferencesByEmail(email: string, preferences: Use
   }
 }
 
+// Delete a filter set from user preferences by email
+export async function deleteFilterSetByEmail(email: string, filterSetId: string): Promise<void> {
+  try {
+    const emailId = `email_${email.toLowerCase().trim()}`;
+    console.log('Deleting filter set for email ID:', emailId, 'filterSetId:', filterSetId);
+    const docRef = doc(db, USER_PREFERENCES_COLLECTION, emailId);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      const currentData = docSnap.data() as UserPreferences;
+      const updatedFilterSets = (currentData.filterSets || []).filter(fs => fs.id !== filterSetId);
+      await updateDoc(docRef, {
+        filterSets: updatedFilterSets,
+        email: email.toLowerCase().trim(), // Ensure email field is preserved
+        updatedAt: serverTimestamp(),
+      });
+      console.log('Filter set deleted successfully');
+    } else {
+      console.log('Document does not exist for email ID:', emailId);
+    }
+  } catch (error) {
+    console.error('Error deleting filter set by email:', error);
+    throw error;
+  }
+}
+
 // Save a generated tattoo
 export interface GeneratedTattoo {
   id: string;
@@ -398,5 +425,122 @@ export async function getUserGeneratedTattoos(userId: string): Promise<Generated
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as GeneratedTattoo));
 }
 
+// Generation usage tracking
+export interface GenerationUsage {
+  userId?: string;
+  email?: string;
+  generationCount: number;
+  maxGenerations: number;
+  hasPaid: boolean;
+  paymentDate?: number;
+  lastGenerationDate?: number;
+  createdAt?: number;
+  updatedAt?: number;
+}
 
+// Get generation usage by userId
+export async function getGenerationUsage(userId: string): Promise<GenerationUsage | null> {
+  const docRef = doc(db, GENERATION_USAGE_COLLECTION, userId);
+  const docSnap = await getDoc(docRef);
+  if (docSnap.exists()) {
+    return { ...docSnap.data() } as GenerationUsage;
+  }
+  return null;
+}
 
+// Get generation usage by email
+export async function getGenerationUsageByEmail(email: string): Promise<GenerationUsage | null> {
+  const emailId = `email_${email.toLowerCase().trim()}`;
+  const docRef = doc(db, GENERATION_USAGE_COLLECTION, emailId);
+  const docSnap = await getDoc(docRef);
+  if (docSnap.exists()) {
+    return { ...docSnap.data() } as GenerationUsage;
+  }
+  return null;
+}
+
+// Check if user can generate (has paid and hasn't exceeded limit)
+export async function canGenerate(userId?: string, email?: string): Promise<{ canGenerate: boolean; reason?: string; usage?: GenerationUsage }> {
+  let usage: GenerationUsage | null = null;
+  
+  if (userId) {
+    usage = await getGenerationUsage(userId);
+  } else if (email) {
+    usage = await getGenerationUsageByEmail(email);
+  }
+  
+  if (!usage) {
+    return { canGenerate: false, reason: 'No payment record found. Please complete payment first.' };
+  }
+  
+  if (!usage.hasPaid) {
+    return { canGenerate: false, reason: 'Payment not verified. Please complete payment first.', usage };
+  }
+  
+  if (usage.generationCount >= usage.maxGenerations) {
+    return { canGenerate: false, reason: 'Generation limit reached. You have already used your one-time generation right.', usage };
+  }
+  
+  return { canGenerate: true, usage };
+}
+
+// Initialize generation usage after payment (1 generation allowed)
+export async function initializeGenerationUsage(userId?: string, email?: string): Promise<void> {
+  const docId = userId || (email ? `email_${email.toLowerCase().trim()}` : null);
+  if (!docId) {
+    throw new Error('Either userId or email is required');
+  }
+  
+  const docRef = doc(db, GENERATION_USAGE_COLLECTION, docId);
+  const docSnap = await getDoc(docRef);
+  
+  const usageData: Partial<GenerationUsage> = {
+    hasPaid: true,
+    paymentDate: Date.now(),
+    generationCount: 0,
+    maxGenerations: 1,
+    updatedAt: Date.now(),
+  };
+  
+  if (userId) {
+    usageData.userId = userId;
+  }
+  if (email) {
+    usageData.email = email.toLowerCase().trim();
+  }
+  
+  if (docSnap.exists()) {
+    // Update existing record (mark as paid if not already)
+    await updateDoc(docRef, {
+      ...usageData,
+      updatedAt: Date.now(),
+    });
+  } else {
+    // Create new record
+    await setDoc(docRef, {
+      ...usageData,
+      createdAt: Date.now(),
+    });
+  }
+}
+
+// Increment generation count after successful generation
+export async function incrementGenerationCount(userId?: string, email?: string): Promise<void> {
+  const docId = userId || (email ? `email_${email.toLowerCase().trim()}` : null);
+  if (!docId) {
+    throw new Error('Either userId or email is required');
+  }
+  
+  const docRef = doc(db, GENERATION_USAGE_COLLECTION, docId);
+  const docSnap = await getDoc(docRef);
+  
+  if (!docSnap.exists()) {
+    throw new Error('Generation usage record not found. Cannot increment count.');
+  }
+  
+  await updateDoc(docRef, {
+    generationCount: increment(1),
+    lastGenerationDate: Date.now(),
+    updatedAt: Date.now(),
+  });
+}
