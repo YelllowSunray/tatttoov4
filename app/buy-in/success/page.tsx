@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function BuyInSuccessPage() {
+  const { user } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
   const sessionId = searchParams.get('session_id');
@@ -38,6 +40,29 @@ export default function BuyInSuccessPage() {
           // Store email for later use (consultation saving, etc.)
           sessionStorage.setItem('payment_email', data.email);
           sessionStorage.setItem('verified_payment_email', data.email);
+          
+          // Record payment in Firestore to initialize generation limit
+          try {
+            const recordResponse = await fetch('/api/record-payment', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ 
+                userId: user?.uid || undefined,
+                email: data.email 
+              }),
+            });
+            
+            if (recordResponse.ok) {
+              console.log('Payment recorded successfully. Generation limit initialized.');
+            } else {
+              const errorText = await recordResponse.text();
+              console.error('Failed to record payment:', errorText);
+            }
+          } catch (recordError) {
+            console.error('Error recording payment:', recordError);
+          }
         }
       } catch (error) {
         console.error('Error fetching payment email:', error);

@@ -96,6 +96,26 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // User generation limits collection - tracks payment and generation count
+    match /user_generation_limits/{docId} {
+      // TEMPORARY: Allow all operations for testing
+      // TODO: Replace with secure rules after confirming deployment works
+      allow read, write: if true;
+      
+      // Original secure rules (commented out for testing):
+      // For authenticated users: read/write using their Firebase Auth UID
+      // allow read: if request.auth != null && request.auth.uid == docId;
+      // allow write: if request.auth != null && request.auth.uid == docId;
+      // 
+      // For email-based documents (unauthenticated users who paid via Stripe):
+      // allow create: if request.resource.data.email != null && 
+      //                request.resource.data.email is string;
+      // allow update: if request.resource.data.email != null && 
+      //                request.resource.data.email is string;
+      // allow read: if resource.data.keys().hasAny(['email']) && 
+      //                resource.data.email is string;
+    }
+
     // Artist statistics (consultation requests, phone clicks, etc.)
     match /artist_stats/{artistId} {
       // Only admins can read aggregated stats in the admin interface

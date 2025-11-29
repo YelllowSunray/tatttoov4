@@ -85,6 +85,12 @@ export async function POST(request: NextRequest) {
         : `${styleText} tattoo style`;
       promptParts.push(styleDescription);
       
+      // STRONG EMPHASIS ON BODY PART - Add early and multiple times
+      if (bodyParts && bodyParts.length > 0) {
+        const bodyPart = bodyParts[0].toLowerCase();
+        promptParts.push(`tattoo on ${bodyPart}`, `tattoo placed on ${bodyPart}`, `tattoo design for ${bodyPart}`, `showing tattoo on person's ${bodyPart}`, `tattoo on ${bodyPart} placement`);
+      }
+      
       // Add subject matter if provided
       if (subjectMatter.trim()) {
         const shortSubject = subjectMatter.trim().split(',')[0].split('.')[0].trim();
@@ -114,10 +120,10 @@ export async function POST(request: NextRequest) {
         }
       }
       
-      // Add body part context
+      // Add body part context again for reinforcement
       if (bodyParts && bodyParts.length > 0) {
         const bodyPart = bodyParts[0].toLowerCase();
-        promptParts.push(`suitable for ${bodyPart} placement`);
+        promptParts.push(`tattoo on ${bodyPart}`, `suitable for ${bodyPart} placement`, `tattoo visible on ${bodyPart}`);
       }
       
       // Add quality descriptors
@@ -127,6 +133,13 @@ export async function POST(request: NextRequest) {
       promptParts.push('tattoo design inspired by reference image');
     } else {
       // No reference image - full detailed prompt
+      
+      // STRONG EMPHASIS ON BODY PART - Add early and multiple times
+      if (bodyParts && bodyParts.length > 0) {
+        const bodyPart = bodyParts[0].toLowerCase();
+        promptParts.push(`tattoo on ${bodyPart}`, `tattoo placed on ${bodyPart}`, `tattoo design for ${bodyPart}`, `showing tattoo on person's ${bodyPart}`, `tattoo on ${bodyPart} placement`);
+      }
+      
       if (subjectMatter.trim()) {
         promptParts.push(subjectMatter.trim());
       }
@@ -163,10 +176,10 @@ export async function POST(request: NextRequest) {
         }
       }
       
-      // Add body part context
+      // Add body part context again for reinforcement
       if (bodyParts && bodyParts.length > 0) {
         const bodyPart = bodyParts[0].toLowerCase();
-        promptParts.push(`suitable for ${bodyPart} placement`);
+        promptParts.push(`tattoo on ${bodyPart}`, `suitable for ${bodyPart} placement`, `tattoo visible on ${bodyPart}`);
       }
       
       // Add quality descriptors
@@ -246,17 +259,20 @@ export async function POST(request: NextRequest) {
           }
 
           // Build optimized prompt for portrait-to-tattoo conversion
+          const bodyPartEmphasis = bodyParts && bodyParts.length > 0 
+            ? `\nBody placement: Tattoo on ${bodyParts[0]}, tattoo placed on ${bodyParts[0]}, showing tattoo on person's ${bodyParts[0]}, tattoo design for ${bodyParts[0]} placement`
+            : '';
           const portraitTattooPrompt = `Transform this portrait into a ${styleText} tattoo design while preserving the exact facial features and likeness.
 
 Style: ${styleText} tattoo style
 ${colorPreference === 'color' ? 'Color: Colorful tattoo' : 'Color: Black and white tattoo, monochrome'}
-${sizePreference && sizePreference !== 'all' ? `Size: ${sizePreference} tattoo design` : ''}
-${bodyParts && bodyParts.length > 0 ? `Body placement: Suitable for ${bodyParts[0]} placement` : ''}
+${sizePreference && sizePreference !== 'all' ? `Size: ${sizePreference} tattoo design` : ''}${bodyPartEmphasis}
 
 Requirements:
 - Preserve exact facial features and likeness from the reference image
 - Maintain the person's face structure, eyes, nose, mouth in tattoo style
 - Convert to ${styleText} tattoo art style while keeping the person recognizable
+- ${bodyParts && bodyParts.length > 0 ? `Show the tattoo on the person's ${bodyParts[0]} - the tattoo must be visible on ${bodyParts[0]}` : ''}
 - Professional tattoo design quality
 - Clean line art suitable for tattooing
 - The tattoo should look like the person in the reference image`;
@@ -362,17 +378,20 @@ Requirements:
             const genAI = new GoogleGenerativeAI(geminiApiKey);
             
             // Build prompt for Nano Banana - emphasize preserving likeness
+            const bodyPartEmphasisNano = bodyParts && bodyParts.length > 0 
+              ? `\nBody placement: Tattoo on ${bodyParts[0]}, tattoo placed on ${bodyParts[0]}, showing tattoo on person's ${bodyParts[0]}, tattoo design for ${bodyParts[0]} placement`
+              : '';
             const nanoBananaPrompt = `Transform this portrait/selfie into a ${styleText} tattoo design while preserving the exact facial features and likeness.
 
 Style: ${styleText} tattoo style
 Color: ${colorPreference === 'color' ? 'colorful tattoo' : 'black and white tattoo, monochrome'}
-${sizePreference && sizePreference !== 'all' ? `Size: ${sizePreference} tattoo design` : ''}
-${bodyParts && bodyParts.length > 0 ? `Body placement: Suitable for ${bodyParts[0]} placement` : ''}
+${sizePreference && sizePreference !== 'all' ? `Size: ${sizePreference} tattoo design` : ''}${bodyPartEmphasisNano}
 
 Important requirements:
 - PRESERVE the exact facial features and likeness from the reference image
 - Keep the person's face structure, eyes, nose, mouth recognizable
 - Convert to ${styleText} tattoo art style while maintaining the person's appearance
+- ${bodyParts && bodyParts.length > 0 ? `Show the tattoo on the person's ${bodyParts[0]} - the tattoo must be visible on ${bodyParts[0]}` : ''}
 - The tattoo should clearly look like the person in the reference image
 - Professional tattoo design quality
 - Clean line art suitable for tattooing`;
@@ -465,17 +484,20 @@ Important requirements:
 
           // Build optimized prompt for portrait-to-tattoo conversion
           // Emphasize preserving likeness while converting to tattoo style (like gemini.google.com)
+          const bodyPartEmphasisGemini = bodyParts && bodyParts.length > 0 
+            ? `\nBody placement: Tattoo on ${bodyParts[0]}, tattoo placed on ${bodyParts[0]}, showing tattoo on person's ${bodyParts[0]}, tattoo design for ${bodyParts[0]} placement`
+            : '';
           const portraitTattooPrompt = `Transform this portrait into a ${styleText} tattoo design while preserving the exact facial features and likeness.
 
 Style: ${styleText} tattoo style
 ${colorPreference === 'color' ? 'Color: Colorful tattoo' : 'Color: Black and white tattoo, monochrome'}
-${sizePreference && sizePreference !== 'all' ? `Size: ${sizePreference} tattoo design` : ''}
-${bodyParts && bodyParts.length > 0 ? `Body placement: Suitable for ${bodyParts[0]} placement` : ''}
+${sizePreference && sizePreference !== 'all' ? `Size: ${sizePreference} tattoo design` : ''}${bodyPartEmphasisGemini}
 
 Requirements:
 - Preserve exact facial features and likeness from the reference image
 - Maintain the person's face structure, eyes, nose, mouth in tattoo style
 - Convert to ${styleText} tattoo art style while keeping the person recognizable
+- ${bodyParts && bodyParts.length > 0 ? `Show the tattoo on the person's ${bodyParts[0]} - the tattoo must be visible on ${bodyParts[0]}` : ''}
 - Professional tattoo design quality
 - Clean line art suitable for tattooing
 - The tattoo should look like the person in the reference image`;
@@ -596,6 +618,12 @@ Requirements:
           
           let promptParts = [styleDescription];
           
+          // STRONG EMPHASIS ON BODY PART - Add early and multiple times
+          if (bodyParts && bodyParts.length > 0) {
+            const bodyPart = bodyParts[0].toLowerCase();
+            promptParts.push(`tattoo on ${bodyPart}`, `tattoo placed on ${bodyPart}`, `tattoo design for ${bodyPart}`, `showing tattoo on person's ${bodyPart}`, `tattoo on ${bodyPart} placement`);
+          }
+          
           // For portraits, emphasize portrait tattoo conversion
           promptParts.push('portrait tattoo', 'face tattoo design', 'portrait line art');
           
@@ -628,10 +656,10 @@ Requirements:
             }
           }
           
-          // Add body part context - this helps the AI understand placement
+          // Add body part context again for reinforcement
           if (bodyParts && bodyParts.length > 0) {
             const bodyPart = bodyParts[0].toLowerCase();
-            promptParts.push(`suitable for ${bodyPart} placement`);
+            promptParts.push(`tattoo on ${bodyPart}`, `suitable for ${bodyPart} placement`, `tattoo visible on ${bodyPart}`);
           }
           
           // Add quality descriptors for tattoo design
@@ -1555,24 +1583,24 @@ Requirements:
         console.log('⚠️ User selected Vertex AI but service not found');
       }
     } else {
-      // Auto mode: prioritize Vertex AI when configured (default behavior)
-      if (hasVertexAIConfigured) {
-        const vertexIndex = imageServices.findIndex((_, idx) => {
+      // Auto mode: prioritize Replicate when configured (default behavior)
+      if (hasReplicateToken) {
+        const replicateIndex = imageServices.findIndex((_, idx) => {
           const serviceName = serviceNames[idx];
-          return serviceName && serviceName.includes('Vertex AI');
+          return serviceName && serviceName.includes('Replicate');
         });
         
-        if (vertexIndex > 0) {
-          const vertexService = imageServices.splice(vertexIndex, 1)[0];
-          const vertexServiceName = serviceNames.splice(vertexIndex, 1)[0];
-          imageServices.unshift(vertexService);
-          serviceNames.unshift(vertexServiceName);
-          console.log('✅ Auto mode: Vertex AI configured - moved to first position (default)');
-        } else if (vertexIndex === 0) {
-          console.log('✅ Auto mode: Vertex AI configured - already first (default)');
+        if (replicateIndex > 0) {
+          const replicateService = imageServices.splice(replicateIndex, 1)[0];
+          const replicateServiceName = serviceNames.splice(replicateIndex, 1)[0];
+          imageServices.unshift(replicateService);
+          serviceNames.unshift(replicateServiceName);
+          console.log('✅ Auto mode: Replicate API token detected - moved to first position');
+        } else if (replicateIndex === 0) {
+          console.log('✅ Auto mode: Replicate API token detected - already first');
         }
       } else {
-        console.log('⚠️ Auto mode: Vertex AI not configured - will use fallback services');
+        console.log('⚠️ Auto mode: Replicate API token NOT found - will use fallback services');
       }
     }
 
@@ -1647,6 +1675,12 @@ Requirements:
                     // Build prompt for this style, keeping the same subject matter and placement
                     const stylePromptParts: string[] = [];
                     
+                    // STRONG EMPHASIS ON BODY PART - Add early and multiple times
+                    if (bodyParts && bodyParts.length > 0) {
+                      const bodyPart = bodyParts[0].toLowerCase();
+                      stylePromptParts.push(`tattoo on ${bodyPart}`, `tattoo placed on ${bodyPart}`, `tattoo design for ${bodyPart}`, `showing tattoo on person's ${bodyPart}`, `tattoo on ${bodyPart} placement`);
+                    }
+                    
                     if (subjectMatter.trim()) {
                       stylePromptParts.push(subjectMatter.trim());
                     }
@@ -1686,10 +1720,10 @@ Requirements:
                       }
                     }
                     
-                    // Add body part context
+                    // Add body part context again for reinforcement
                     if (bodyParts && bodyParts.length > 0) {
                       const bodyPart = bodyParts[0].toLowerCase();
-                      stylePromptParts.push(`suitable for ${bodyPart} placement`);
+                      stylePromptParts.push(`tattoo on ${bodyPart}`, `suitable for ${bodyPart} placement`, `tattoo visible on ${bodyPart}`);
                     }
                     
                     // Add quality descriptors

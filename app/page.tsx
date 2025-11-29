@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { AuthModal } from '@/components/AuthModal';
 import { ProfileModal } from '@/components/ProfileModal';
+import { GenerateTattooModal } from '@/components/GenerateTattooModal';
+import { FilterSet } from '@/types';
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { initiateCheckout } from '@/lib/stripe-checkout';
@@ -16,6 +18,8 @@ export default function HomePage() {
   const [showWelcomeMessage, setShowWelcomeMessage] = useState(false);
   const [hasPaid, setHasPaid] = useState(false);
   const [emailVerified, setEmailVerified] = useState(false);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [questionnaireFilterSet, setQuestionnaireFilterSet] = useState<FilterSet | null>(null);
 
   useEffect(() => {
     // Check if user has paid via payment session
@@ -27,19 +31,42 @@ export default function HomePage() {
     }
   }, []);
 
-  // Open profile modal if coming from consultation
+  // Open Generate Tattoo modal directly if coming from consultation
   useEffect(() => {
-    const shouldOpenProfile = searchParams.get('openProfile') === 'generate';
-    const comingFromConsultation = shouldOpenProfile;
+    const shouldOpenGenerate = searchParams.get('openProfile') === 'generate';
     
     // Check if they have localStorage preferences (indicates they completed consultation)
     const hasConsultationData = typeof window !== 'undefined' && localStorage.getItem('tattooPreferences') !== null;
     
-    if (shouldOpenProfile && (user || (hasPaid && emailVerified) || (comingFromConsultation && hasConsultationData))) {
-      setShowProfileModal(true);
-      setShowWelcomeMessage(true);
-      // Clean up URL
-      window.history.replaceState({}, '', '/');
+    if (shouldOpenGenerate && hasConsultationData && (user || (hasPaid && emailVerified))) {
+      // Get preferences from localStorage
+      const savedPreferences = localStorage.getItem('tattooPreferences');
+      if (savedPreferences) {
+        try {
+          const prefs = JSON.parse(savedPreferences);
+          
+          // Create a FilterSet from the questionnaire preferences
+          const filterSet: FilterSet = {
+            id: `questionnaire-${Date.now()}`,
+            name: 'My Consultation',
+            styles: prefs.styles || [],
+            bodyParts: prefs.bodyParts || [],
+            colorPreference: prefs.colorPreference || null,
+            sizePreference: prefs.sizePreference || null,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+          
+          setQuestionnaireFilterSet(filterSet);
+          setShowGenerateModal(true);
+          
+          // Clean up URL and localStorage
+          window.history.replaceState({}, '', '/');
+          localStorage.removeItem('tattooPreferences');
+        } catch (err) {
+          console.error('Error parsing saved preferences:', err);
+        }
+      }
     }
   }, [user, searchParams, hasPaid, emailVerified]);
 
@@ -665,22 +692,12 @@ export default function HomePage() {
                 We invite you to explore both paths and discover which resonates most deeply with your personal vision.
               </p>
               <div className="pt-6">
-                {!user && (
-                  <button
-                    onClick={() => setShowAuthModal(true)}
-                    className="rounded-full bg-black px-8 py-4 text-sm font-medium text-white transition-all duration-200 hover:bg-black/90 active:bg-black/95 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation"
-                  >
-                    Begin Your Consultation
-                  </button>
-                )}
-                {user && (
-                  <Link
-                    href="/beginners"
-                    className="inline-block rounded-full bg-black px-8 py-4 text-sm font-medium text-white transition-all duration-200 hover:bg-black/90 active:bg-black/95 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation"
-                  >
-                    Begin Your Consultation
-                  </Link>
-                )}
+                <a
+                  href="tel:+3161234567"
+                  className="inline-block rounded-full bg-black px-8 py-4 text-sm font-medium text-white transition-all duration-200 hover:bg-black/90 active:bg-black/95 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation"
+                >
+                  +3161234567
+                </a>
               </div>
             </div>
           </div>
@@ -704,6 +721,18 @@ export default function HomePage() {
             setShowWelcomeMessage(false);
           }}
           showWelcomeMessage={showWelcomeMessage}
+        />
+      )}
+      {showGenerateModal && questionnaireFilterSet && (
+        <GenerateTattooModal
+          filterSet={questionnaireFilterSet}
+          onClose={() => {
+            setShowGenerateModal(false);
+            setQuestionnaireFilterSet(null);
+          }}
+          onSuccess={(imageUrl) => {
+            console.log('Tattoo generated successfully:', imageUrl);
+          }}
         />
       )}
     </div>

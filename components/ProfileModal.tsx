@@ -166,10 +166,14 @@ export function ProfileModal({ onClose, onApplyFilters, showWelcomeMessage = fal
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto"
+      className={`fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm p-4 overflow-y-auto ${
+        generatingForFilterSet ? 'bg-transparent pointer-events-none' : 'bg-black/80'
+      }`}
     >
       <div
-        className="w-full max-w-2xl border border-black/20 bg-white p-6 sm:p-8 md:p-10 my-auto"
+        className={`w-full max-w-2xl border border-black/20 bg-white p-6 sm:p-8 md:p-10 my-auto ${
+          generatingForFilterSet ? 'opacity-0 pointer-events-none' : ''
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-6 sm:mb-8 text-2xl sm:text-3xl md:text-4xl font-light tracking-[-0.02em] text-black">

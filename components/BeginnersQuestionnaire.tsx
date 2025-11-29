@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 type ExperienceLevel = 'beginner' | 'somewhat-known' | 'known' | null;
-type QuestionStep = 'experience' | 'style-intro' | 'style' | 'bodyPart' | 'placement-education' | 'color' | 'size' | 'size-education' | 'combining-education' | 'artist-tips' | 'complete';
+type QuestionStep = 'experience' | 'style-intro' | 'style' | 'bodyPart' | 'placement-education' | 'color' | 'size' | 'size-education' | 'combining-education' | 'artist-tips';
 
 // Style descriptions for educational purposes
 const STYLE_DESCRIPTIONS: Record<string, string> = {
@@ -38,7 +38,6 @@ export function BeginnersQuestionnaire() {
   const [tattoos, setTattoos] = useState<Tattoo[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [filterName, setFilterName] = useState('');
   const [showAIGenerated, setShowAIGenerated] = useState(false);
   const [preferences, setPreferences] = useState<Omit<FilterSet, 'id' | 'name' | 'createdAt' | 'updatedAt'>>({
     styles: [],
@@ -107,18 +106,19 @@ export function BeginnersQuestionnaire() {
 
   const handleBodyPartSelect = (bodyPart: string) => {
     setPreferences(prev => {
+      // Only allow one body part selection - replace if already selected, otherwise set as new selection
       const newBodyParts = prev.bodyParts.includes(bodyPart)
-        ? prev.bodyParts.filter(b => b !== bodyPart)
-        : [...prev.bodyParts, bodyPart];
+        ? [] // Deselect if clicking the same one
+        : [bodyPart]; // Replace with new selection
       return { ...prev, bodyParts: newBodyParts };
     });
   };
 
-  const handleColorSelect = (preference: 'color' | 'bw' | 'both') => {
+  const handleColorSelect = (preference: 'color' | 'bw') => {
     setPreferences(prev => ({ ...prev, colorPreference: preference }));
   };
 
-  const handleSizeSelect = (preference: 'small' | 'medium' | 'large' | 'all') => {
+  const handleSizeSelect = (preference: 'small' | 'medium' | 'large') => {
     setPreferences(prev => ({ ...prev, sizePreference: preference }));
   };
 
@@ -126,27 +126,30 @@ export function BeginnersQuestionnaire() {
     // Build steps array based on experience level
     let steps: QuestionStep[];
     if (experienceLevel === 'beginner') {
-      steps = ['experience', 'style-intro', 'style', 'bodyPart', 'placement-education', 'color', 'size', 'size-education', 'combining-education', 'artist-tips', 'complete'];
+      steps = ['experience', 'style-intro', 'style', 'bodyPart', 'placement-education', 'color', 'size', 'size-education', 'combining-education', 'artist-tips'];
     } else if (experienceLevel === 'somewhat-known') {
-      steps = ['experience', 'style', 'bodyPart', 'color', 'size', 'artist-tips', 'complete'];
+      steps = ['experience', 'style', 'bodyPart', 'color', 'size', 'artist-tips'];
     } else {
-      steps = ['experience', 'style', 'bodyPart', 'color', 'size', 'complete'];
+      steps = ['experience', 'style', 'bodyPart', 'color', 'size'];
     }
     
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
       setCurrentStep(steps[currentIndex + 1]);
+    } else {
+      // Last step reached - directly complete
+      handleComplete();
     }
   };
 
   const handleBack = () => {
     let steps: QuestionStep[];
     if (experienceLevel === 'beginner') {
-      steps = ['experience', 'style-intro', 'style', 'bodyPart', 'placement-education', 'color', 'size', 'size-education', 'combining-education', 'artist-tips', 'complete'];
+      steps = ['experience', 'style-intro', 'style', 'bodyPart', 'placement-education', 'color', 'size', 'size-education', 'combining-education', 'artist-tips'];
     } else if (experienceLevel === 'somewhat-known') {
-      steps = ['experience', 'style', 'bodyPart', 'color', 'size', 'artist-tips', 'complete'];
+      steps = ['experience', 'style', 'bodyPart', 'color', 'size', 'artist-tips'];
     } else {
-      steps = ['experience', 'style', 'bodyPart', 'color', 'size', 'complete'];
+      steps = ['experience', 'style', 'bodyPart', 'color', 'size'];
     }
     
     const currentIndex = steps.indexOf(currentStep);
@@ -156,17 +159,17 @@ export function BeginnersQuestionnaire() {
   };
 
   const handleComplete = async () => {
-    if (!filterName.trim()) {
-      alert('Please enter a name for this filter set');
-      return;
-    }
+    // Auto-generate a name based on preferences
+    const autoName = preferences.styles.length > 0 
+      ? `My ${preferences.styles[0]} Design`
+      : 'My Tattoo Preferences';
 
     setSaving(true);
     try {
       // Save to Firebase - use userId if logged in, otherwise use email from payment
       if (user?.uid) {
         await addFilterSet(user.uid, {
-          name: filterName.trim(),
+          name: autoName,
           ...preferences,
         });
       } else if (typeof window !== 'undefined') {
@@ -176,7 +179,7 @@ export function BeginnersQuestionnaire() {
         if (paymentEmail) {
           try {
             const filterSetId = await addFilterSetByEmail(paymentEmail, {
-              name: filterName.trim(),
+              name: autoName,
               ...preferences,
             });
             console.log('Successfully saved to Firebase with filterSetId:', filterSetId);
@@ -202,7 +205,7 @@ export function BeginnersQuestionnaire() {
         }
       }
       
-      // Redirect to homepage and open profile modal to generate tattoos
+      // Redirect to homepage and open generate modal directly
       router.push('/?openProfile=generate');
     } catch (err) {
       console.error('Error saving preferences:', err);
@@ -368,7 +371,7 @@ export function BeginnersQuestionnaire() {
                 <p className="text-sm text-black/50 tracking-wide">
                   {experienceLevel === 'beginner'
                     ? 'Consider placement carefully. Some areas are more visible, others more private. Both are valid choices.'
-                    : 'Choose the body parts you\'re considering'}
+                    : 'Select one placement for your tattoo'}
                 </p>
               </div>
               <BodyPartSelection
@@ -438,29 +441,8 @@ export function BeginnersQuestionnaire() {
             </>
           )}
 
-          {currentStep === 'complete' && (
-            <>
-              <div className="mb-10 sm:mb-14 text-center">
-                <h2 className="mb-4 text-2xl sm:text-3xl md:text-4xl font-light tracking-[-0.02em] text-black">
-                  Great! You're all set
-                </h2>
-                <p className="text-sm text-black/50 tracking-wide mb-2">
-                  Give your preferences a name so you can find them later
-                </p>
-                <p className="text-xs text-black/40 tracking-wide">
-                  Next: Use AI to generate tattoo designs based on your preferences
-                </p>
-              </div>
-              <CompletionView
-                preferences={preferences}
-                filterName={filterName}
-                onFilterNameChange={setFilterName}
-              />
-            </>
-          )}
-
           {/* Navigation Buttons */}
-          {currentStep !== 'complete' && currentStep !== 'experience' && (
+          {currentStep !== 'experience' && (
             <div className="mt-12 flex flex-col sm:flex-row gap-4 sm:justify-between">
               <button
                 onClick={handleBack}
@@ -478,29 +460,6 @@ export function BeginnersQuestionnaire() {
             </div>
           )}
 
-          {currentStep === 'complete' && (
-            <div className="mt-12 flex flex-col items-center gap-4">
-              {user && (
-                <p className="text-xs text-black/50 tracking-wide text-center">
-                  Your preferences will be saved to your profile
-                </p>
-              )}
-              <button
-                onClick={handleComplete}
-                disabled={saving || !filterName.trim()}
-                className="rounded-full bg-black px-8 py-3.5 text-xs font-medium text-white transition-all duration-200 hover:bg-black/90 active:bg-black/95 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {saving ? (
-                  <>
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-                    Saving...
-                  </>
-                ) : (
-                  'Generate Tattoo with AI'
-                )}
-              </button>
-            </div>
-          )}
         </div>
       </main>
     </div>
@@ -997,8 +956,8 @@ function BodyPartSelection({ bodyParts, tattoos, selectedBodyParts, onSelect }: 
 // Color Selection Component
 interface ColorSelectionProps {
   tattoos: Tattoo[];
-  selected: 'color' | 'bw' | 'both' | null;
-  onSelect: (preference: 'color' | 'bw' | 'both') => void;
+  selected: 'color' | 'bw' | null;
+  onSelect: (preference: 'color' | 'bw') => void;
 }
 
 function ColorSelection({ tattoos, selected, onSelect }: ColorSelectionProps) {
@@ -1011,7 +970,7 @@ function ColorSelection({ tattoos, selected, onSelect }: ColorSelectionProps) {
   }, [tattoos]);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <button
         onClick={() => onSelect('color')}
         className={`text-left border-2 transition-all duration-200 ${
@@ -1106,51 +1065,20 @@ function ColorSelection({ tattoos, selected, onSelect }: ColorSelectionProps) {
         </div>
       </button>
 
-      <button
-        onClick={() => onSelect('both')}
-        className={`text-left border-2 transition-all duration-200 ${
-          selected === 'both'
-            ? 'border-black bg-black/5'
-            : 'border-black/10 hover:border-black/30'
-        }`}
-      >
-        <div className="p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base sm:text-lg font-light text-black">Both</h3>
-            {selected === 'both' && (
-              <div className="w-5 h-5 rounded-full bg-black flex items-center justify-center">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-3 w-3 text-white"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-            )}
-          </div>
-          <p className="text-xs text-black/50 tracking-wide">
-            I'm open to both color and black & white tattoos
-          </p>
-        </div>
-      </button>
     </div>
   );
 }
 
 // Size Selection Component
 interface SizeSelectionProps {
-  selected: 'small' | 'medium' | 'large' | 'all' | null;
-  onSelect: (preference: 'small' | 'medium' | 'large' | 'all') => void;
+  selected: 'small' | 'medium' | 'large' | null;
+  onSelect: (preference: 'small' | 'medium' | 'large') => void;
 }
 
 function SizeSelection({ selected, onSelect }: SizeSelectionProps) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {(['small', 'medium', 'large', 'all'] as const).map(size => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {(['small', 'medium', 'large'] as const).map(size => (
         <button
           key={size}
           onClick={() => onSelect(size)}
@@ -1162,7 +1090,7 @@ function SizeSelection({ selected, onSelect }: SizeSelectionProps) {
         >
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base sm:text-lg font-light text-black capitalize">
-              {size === 'all' ? 'All Sizes' : size}
+              {size}
             </h3>
             {selected === size && (
               <div className="w-5 h-5 rounded-full bg-black flex items-center justify-center">
@@ -1183,7 +1111,6 @@ function SizeSelection({ selected, onSelect }: SizeSelectionProps) {
             {size === 'small' && 'Small tattoos (e.g., wrist, ankle, behind ear)'}
             {size === 'medium' && 'Medium tattoos (e.g., forearm, calf, shoulder)'}
             {size === 'large' && 'Large tattoos (e.g., full sleeve, back piece, leg piece)'}
-            {size === 'all' && 'I\'m open to all tattoo sizes'}
           </p>
         </button>
       ))}
@@ -1452,71 +1379,3 @@ function ArtistTips({ onContinue, experienceLevel }: ArtistTipsProps) {
   );
 }
 
-// Completion View Component
-interface CompletionViewProps {
-  preferences: Omit<FilterSet, 'id' | 'name' | 'createdAt' | 'updatedAt'>;
-  filterName: string;
-  onFilterNameChange: (name: string) => void;
-}
-
-function CompletionView({ preferences, filterName, onFilterNameChange }: CompletionViewProps) {
-  return (
-    <div className="border border-black/10 bg-white p-8 sm:p-12">
-      <div className="mb-6">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          className="h-16 w-16 mx-auto text-black"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth="1"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      </div>
-      <h3 className="text-xl sm:text-2xl font-light text-black mb-6 text-center">
-        Save Your Preferences
-      </h3>
-      
-      <div className="mb-6 max-w-lg mx-auto">
-        <label className="mb-2 block text-base font-medium text-black tracking-wide text-center">
-          Name your tattoo preferences
-        </label>
-        <p className="text-xs text-black/50 mb-6 text-center">
-          Give your preferences a name so you can easily find and use them later (e.g., "My First Tattoo Ideas", "Bold & Colorful Style", "Minimalist Collection")
-        </p>
-        <input
-          type="text"
-          value={filterName}
-          onChange={(e) => onFilterNameChange(e.target.value)}
-          placeholder="Enter a name for your preferences..."
-          className="w-full border-2 border-black/30 bg-white px-6 py-4 text-lg text-black placeholder-black/40 focus:border-black focus:outline-none focus:ring-2 focus:ring-black/10 transition-all duration-200 text-center font-light"
-        />
-      </div>
-
-      <div className="text-sm text-black/50 space-y-2 mb-6 text-center">
-        {preferences.styles.length > 0 && (
-          <p>Styles: {preferences.styles.join(', ')}</p>
-        )}
-        {preferences.bodyParts.length > 0 && (
-          <p>Body Parts: {preferences.bodyParts.join(', ')}</p>
-        )}
-        {preferences.colorPreference && (
-          <p>Color: {preferences.colorPreference === 'both' ? 'Both' : preferences.colorPreference === 'color' ? 'Color' : 'Black & White'}</p>
-        )}
-        {preferences.sizePreference && (
-          <p>Size: {preferences.sizePreference === 'all' ? 'All Sizes' : preferences.sizePreference.charAt(0).toUpperCase() + preferences.sizePreference.slice(1)}</p>
-        )}
-      </div>
-      
-      <div className="mt-6 p-4 bg-black/5 border border-black/10 rounded-lg text-center">
-        <p className="text-xs text-black/70 mb-1">
-          <strong>✨ Next Step:</strong>
-        </p>
-        <p className="text-xs text-black/60">
-          After saving, you'll go to your profile where you can use AI to generate custom tattoo designs based on these preferences!
-        </p>
-      </div>
-    </div>
-  );
-}

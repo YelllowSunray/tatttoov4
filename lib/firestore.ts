@@ -13,7 +13,7 @@ import {
   increment,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Artist, Tattoo, UserLike, Inquiry, ArtistStats, UserPreferences, FilterSet } from '@/types';
+import { Artist, Tattoo, UserLike, Inquiry, ArtistStats, UserPreferences, FilterSet, UserGenerationLimit } from '@/types';
 
 // Collection names
 const ARTISTS_COLLECTION = 'artists';
@@ -23,7 +23,7 @@ const LIKES_COLLECTION = 'likes';
 const INQUIRIES_COLLECTION = 'inquiries';
 const ARTIST_STATS_COLLECTION = 'artist_stats';
 const USER_PREFERENCES_COLLECTION = 'user_preferences';
-const GENERATION_USAGE_COLLECTION = 'generation_usage';
+const USER_GENERATION_LIMITS_COLLECTION = 'user_generation_limits';
 
 // Get all artists
 export async function getArtists(): Promise<Artist[]> {
@@ -425,122 +425,121 @@ export async function getUserGeneratedTattoos(userId: string): Promise<Generated
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as GeneratedTattoo));
 }
 
-// Generation usage tracking
-export interface GenerationUsage {
-  userId?: string;
-  email?: string;
-  generationCount: number;
-  maxGenerations: number;
-  hasPaid: boolean;
-  paymentDate?: number;
-  lastGenerationDate?: number;
-  createdAt?: number;
-  updatedAt?: number;
-}
+// ========== GENERATION LIMIT FUNCTIONS ==========
 
-// Get generation usage by userId
-export async function getGenerationUsage(userId: string): Promise<GenerationUsage | null> {
-  const docRef = doc(db, GENERATION_USAGE_COLLECTION, userId);
-  const docSnap = await getDoc(docRef);
-  if (docSnap.exists()) {
-    return { ...docSnap.data() } as GenerationUsage;
-  }
-  return null;
-}
-
-// Get generation usage by email
-export async function getGenerationUsageByEmail(email: string): Promise<GenerationUsage | null> {
-  const emailId = `email_${email.toLowerCase().trim()}`;
-  const docRef = doc(db, GENERATION_USAGE_COLLECTION, emailId);
-  const docSnap = await getDoc(docRef);
-  if (docSnap.exists()) {
-    return { ...docSnap.data() } as GenerationUsage;
-  }
-  return null;
-}
-
-// Check if user can generate (has paid and hasn't exceeded limit)
-export async function canGenerate(userId?: string, email?: string): Promise<{ canGenerate: boolean; reason?: string; usage?: GenerationUsage }> {
-  let usage: GenerationUsage | null = null;
-  
-  if (userId) {
-    usage = await getGenerationUsage(userId);
-  } else if (email) {
-    usage = await getGenerationUsageByEmail(email);
-  }
-  
-  if (!usage) {
-    return { canGenerate: false, reason: 'No payment record found. Please complete payment first.' };
-  }
-  
-  if (!usage.hasPaid) {
-    return { canGenerate: false, reason: 'Payment not verified. Please complete payment first.', usage };
-  }
-  
-  if (usage.generationCount >= usage.maxGenerations) {
-    return { canGenerate: false, reason: 'Generation limit reached. You have already used your one-time generation right.', usage };
-  }
-  
-  return { canGenerate: true, usage };
-}
-
-// Initialize generation usage after payment (1 generation allowed)
-export async function initializeGenerationUsage(userId?: string, email?: string): Promise<void> {
-  const docId = userId || (email ? `email_${email.toLowerCase().trim()}` : null);
+/**
+ * Record payment and initialize generation limit (1 generation allowed)
+ * Can be called with userId (authenticated) or email (unauthenticated paid user)
+ */
+export async function recordPayment(userId?: string, email?: string): Promise<void> {
+  const docId = userId || `email_${email?.toLowerCase().trim()}`;
   if (!docId) {
-    throw new Error('Either userId or email is required');
+    throw new Error('Either userId or email must be provided');
   }
-  
-  const docRef = doc(db, GENERATION_USAGE_COLLECTION, docId);
+
+  const docRef = doc(db, USER_GENERATION_LIMITS_COLLECTION, docId);
   const docSnap = await getDoc(docRef);
-  
-  const usageData: Partial<GenerationUsage> = {
+
+  // Build limitData object, only including defined fields (Firestore doesn't allow undefined)
+  const limitData: any = {
     hasPaid: true,
-    paymentDate: Date.now(),
     generationCount: 0,
-    maxGenerations: 1,
+    generationLimit: 1, // €100 payment = 1 generation
+    paymentDate: Date.now(),
     updatedAt: Date.now(),
   };
-  
+
+  // Only add userId if provided
   if (userId) {
-    usageData.userId = userId;
+    limitData.userId = userId;
   }
+
+  // Only add email if provided
   if (email) {
-    usageData.email = email.toLowerCase().trim();
+    limitData.email = email.toLowerCase().trim();
   }
-  
+
   if (docSnap.exists()) {
-    // Update existing record (mark as paid if not already)
+    // Update existing record
     await updateDoc(docRef, {
-      ...usageData,
-      updatedAt: Date.now(),
+      ...limitData,
+      updatedAt: serverTimestamp(),
     });
   } else {
     // Create new record
     await setDoc(docRef, {
-      ...usageData,
-      createdAt: Date.now(),
+      ...limitData,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     });
   }
 }
 
-// Increment generation count after successful generation
+/**
+ * Get generation limit status for a user
+ * Returns null if user hasn't paid
+ */
+export async function getGenerationLimit(userId?: string, email?: string): Promise<UserGenerationLimit | null> {
+  const docId = userId || (email ? `email_${email.toLowerCase().trim()}` : null);
+  if (!docId) {
+    return null;
+  }
+
+  const docRef = doc(db, USER_GENERATION_LIMITS_COLLECTION, docId);
+  const docSnap = await getDoc(docRef);
+
+  if (docSnap.exists()) {
+    return { ...docSnap.data() } as UserGenerationLimit;
+  }
+
+  return null;
+}
+
+/**
+ * Check if user can generate (has paid and hasn't exceeded limit)
+ */
+export async function canGenerate(userId?: string, email?: string): Promise<{ canGenerate: boolean; reason?: string }> {
+  const limit = await getGenerationLimit(userId, email);
+
+  if (!limit) {
+    return { canGenerate: false, reason: 'Payment not found. Please complete payment first.' };
+  }
+
+  if (!limit.hasPaid) {
+    return { canGenerate: false, reason: 'Payment not completed. Please complete payment first.' };
+  }
+
+  if (limit.generationCount >= limit.generationLimit) {
+    return { canGenerate: false, reason: 'Your Limit has been reached. Please do reach out to us now' };
+  }
+
+  return { canGenerate: true };
+}
+
+/**
+ * Increment generation count after successful generation
+ */
 export async function incrementGenerationCount(userId?: string, email?: string): Promise<void> {
   const docId = userId || (email ? `email_${email.toLowerCase().trim()}` : null);
   if (!docId) {
-    throw new Error('Either userId or email is required');
+    throw new Error('Either userId or email must be provided');
   }
-  
-  const docRef = doc(db, GENERATION_USAGE_COLLECTION, docId);
+
+  const docRef = doc(db, USER_GENERATION_LIMITS_COLLECTION, docId);
   const docSnap = await getDoc(docRef);
-  
+
   if (!docSnap.exists()) {
-    throw new Error('Generation usage record not found. Cannot increment count.');
+    throw new Error('Generation limit record not found. Payment may not be recorded.');
   }
-  
+
+  const currentData = docSnap.data() as UserGenerationLimit;
+  const newCount = (currentData.generationCount || 0) + 1;
+
   await updateDoc(docRef, {
-    generationCount: increment(1),
-    lastGenerationDate: Date.now(),
-    updatedAt: Date.now(),
+    generationCount: newCount,
+    updatedAt: serverTimestamp(),
   });
 }
+
+
+

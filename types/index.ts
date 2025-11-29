@@ -81,4 +81,15 @@ export interface UserPreferences {
   updatedAt?: number;
 }
 
+export interface UserGenerationLimit {
+  userId?: string; // Firebase Auth user ID if logged in
+  email?: string; // Email if user paid without account
+  hasPaid: boolean; // Whether user has paid the €100
+  generationCount: number; // Number of times they've generated (should be 0 or 1)
+  generationLimit: number; // Maximum allowed generations (1 for €100 payment)
+  paymentDate?: number; // When payment was made
+  createdAt?: number;
+  updatedAt?: number;
+}
+
 

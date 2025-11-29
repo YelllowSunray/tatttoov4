@@ -400,6 +400,12 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
         console.log('No reference image provided - using text-to-image generation');
       }
 
+      // Get userId or email for generation limit tracking
+      const userId = user?.uid || undefined;
+      const email = typeof window !== 'undefined' 
+        ? (sessionStorage.getItem('payment_email') || sessionStorage.getItem('verified_payment_email') || undefined)
+        : undefined;
+
       const requestBody = {
         styles: filterSet.styles,
         sizePreference: filterSet.sizePreference,
@@ -410,6 +416,8 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
         referenceImageMimeType: referenceImageMimeType,
         preferredService: preferredService !== 'auto' ? preferredService : undefined,
         generateAllStyles: !referenceImageBase64, // Always generate all styles when no reference image (mandatory)
+        userId,
+        email,
       };
 
       console.log('📤 Sending generation request:', {
@@ -617,31 +625,13 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
   return (
     <div
       ref={modalOuterRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto"
-      onClick={onClose}
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto"
     >
       <div
         ref={modalContentRef}
         className="w-full max-w-2xl border border-black/20 bg-white p-6 sm:p-8 md:p-10 my-auto max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          onClick={onClose}
-          className="mb-6 ml-auto block text-black/40 hover:text-black active:text-black/60 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
-          aria-label="Close"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth="1"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-
         <div ref={formRef}>
           <h2 className="mb-6 text-2xl sm:text-3xl font-light tracking-[-0.02em] text-black">
             Generate Tattoo Design
@@ -669,7 +659,7 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
           {filterSet.colorPreference && (
             <p className="text-sm text-black/60">
               <span className="font-medium text-black/80">Color:</span>{' '}
-              {filterSet.colorPreference === 'both' ? 'Both' : filterSet.colorPreference === 'color' ? 'Color' : 'Black & White'}
+              {filterSet.colorPreference === 'color' ? 'Color' : filterSet.colorPreference === 'both' ? 'Both' : 'Black & White'}
             </p>
           )}
         </div>
@@ -953,15 +943,9 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
           <button
             onClick={handleGenerate}
             disabled={loading || (!subjectMatter.trim() && !referenceImage)}
-            className="flex-1 rounded-full bg-black px-6 py-3.5 text-xs font-medium text-white transition-all duration-200 hover:bg-black/90 active:bg-black/95 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full rounded-full bg-black px-6 py-3.5 text-xs font-medium text-white transition-all duration-200 hover:bg-black/90 active:bg-black/95 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Generating...' : 'Generate Tattoo'}
-          </button>
-          <button
-            onClick={onClose}
-            className="flex-1 rounded-full border border-black px-6 py-3.5 text-xs font-medium text-black transition-all duration-200 hover:bg-black hover:text-white active:bg-black/95 uppercase tracking-[0.1em] min-h-[44px] touch-manipulation"
-          >
-            Close
           </button>
         </div>
         </div>
