@@ -36,6 +36,7 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
   const [selectedStyleImage, setSelectedStyleImage] = useState<{ style: string; image: string; index: number } | null>(null);
   const [savedStyleImages, setSavedStyleImages] = useState<Set<number>>(new Set());
   const [savingStyleIndex, setSavingStyleIndex] = useState<number | null>(null);
+  const [hasAutoDownloaded, setHasAutoDownloaded] = useState(false);
   const modalContentRef = useRef<HTMLDivElement>(null);
   const modalOuterRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
@@ -142,6 +143,22 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
       }
     };
   }, [blobUrl, referenceImagePreview]);
+
+  // Automatically download all style variations when generation is complete
+  useEffect(() => {
+    // Only auto-download if:
+    // 1. Generation is complete (loading is false)
+    // 2. We have style images (allStyleImages.length > 0)
+    // 3. We haven't already auto-downloaded for this generation cycle
+    if (!loading && allStyleImages.length > 0 && !hasAutoDownloaded) {
+      console.log(`Auto-downloading ${allStyleImages.length} style variations...`);
+      setHasAutoDownloaded(true);
+      // Small delay to ensure images are fully rendered
+      setTimeout(() => {
+        handleDownloadAll();
+      }, 500);
+    }
+  }, [loading, allStyleImages.length, hasAutoDownloaded]);
 
   // Handle reference image upload
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -377,6 +394,7 @@ export function GenerateTattooModal({ filterSet, onClose, onSuccess }: GenerateT
     setNeedsHuggingFaceKey(false);
     setImageLoading(false);
     setAllStyleImages([]); // Reset all style images
+    setHasAutoDownloaded(false); // Reset auto-download flag
 
     try {
       // Convert reference image to base64 if provided
